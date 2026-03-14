@@ -981,46 +981,66 @@
   <h1>LivingMeta<span class="version">v1.0</span> — Self-Discovering Certified Meta-Analysis</h1>
   <div class="header-controls">
     <select id="configSelector" class="form-select" aria-label="Analysis configuration" onchange="handleConfigChange(this.value)">
-      <option value="colchicine_cvd" selected>Colchicine — CVD Prevention</option>
-      <option value="finerenone">Finerenone — CKD/HF (MRA)</option>
-      <option value="sglt2_hf">SGLT2i — Heart Failure</option>
-      <option value="glp1_cvot">GLP-1 RA — CVOTs</option>
-      <option value="pcsk9">PCSK9 Inhibitors — ASCVD</option>
-      <option value="intensive_bp">Intensive BP Control</option>
-      <option value="bempedoic_acid">Bempedoic Acid — Lipid-Lowering</option>
-      <option value="incretin_hfpef">Incretins — HFpEF/Obesity</option>
-      <option value="attr_cm">ATTR-CM — Cardiac Amyloidosis</option>
-      <option value="sglt2_ckd">SGLT2i — CKD</option>
-      <option value="sglt2_t2dm_cvot">SGLT2i — T2DM CVOTs</option>
-      <option value="arni_hf">Sacubitril/Valsartan — HF</option>
-      <option value="iron_hf">IV Iron — HF</option>
-      <option value="icosapent_cv">Icosapent Ethyl — CV</option>
-      <option value="vericiguat_hf">Vericiguat — HF</option>
-      <option value="omecamtiv_hf">Omecamtiv Mecarbil — HF</option>
-      <option value="mavacamten_hcm">Mavacamten — HCM</option>
-      <option value="canakinumab_cv">Canakinumab — Anti-IL-1b</option>
-      <option value="rivaroxaban_vasc">Rivaroxaban — Vascular</option>
-      <option value="semaglutide_ckd">Semaglutide — CKD (FLOW)</option>
-      <option value="tirzepatide_t2dm">Tirzepatide — T2DM</option>
-      <option value="semaglutide_obesity">Semaglutide — Obesity</option>
-      <option value="tirzepatide_obesity">Tirzepatide — Obesity</option>
-      <option value="inclisiran">Inclisiran — siRNA PCSK9</option>
-      <option value="ezetimibe_cv">Ezetimibe — CV</option>
-      <option value="mitraclip_mr">MitraClip — MR</option>
-      <option value="tavr_low_risk">TAVR — Low Risk</option>
-      <option value="renal_denervation">Renal Denervation — HTN</option>
-      <option value="doac_af">DOACs — AF</option>
-      <option value="doac_vte">DOACs — VTE</option>
-      <option value="dupilumab_asthma">Dupilumab — Asthma/COPD</option>
-      <option value="tezepelumab_asthma">Tezepelumab — Asthma</option>
-      <option value="empagliflozin_post_mi">Empagliflozin — Post-MI</option>
-      <option value="dapagliflozin_post_mi">Dapagliflozin — Post-MI</option>
-      <option value="ticagrelor_acs">Ticagrelor — ACS/CAD</option>
-      <option value="anakinra_pericarditis">Anakinra — Pericarditis</option>
-      <option value="catheter_ablation_af">Ablation — AF + HF</option>
-      <option value="sotatercept_pah">Sotatercept — PAH</option>
-      <option value="dexrazoxane_cardio">Dexrazoxane — Cardioprotection</option>
-      <option value="closed_loop_t1dm">Closed-Loop — T1DM</option>
+      <optgroup label="Anti-Inflammatory">
+        <option value="colchicine_cvd" selected>Colchicine — CVD</option>
+        <option value="canakinumab_cv">Canakinumab — Anti-IL-1b</option>
+        <option value="anakinra_pericarditis">Anakinra — Pericarditis</option>
+      </optgroup>
+      <optgroup label="Heart Failure">
+        <option value="sglt2_hf">SGLT2i — HF</option>
+        <option value="arni_hf">Sacubitril/Valsartan</option>
+        <option value="incretin_hfpef">Incretins — HFpEF</option>
+        <option value="vericiguat_hf">Vericiguat</option>
+        <option value="omecamtiv_hf">Omecamtiv Mecarbil</option>
+        <option value="iron_hf">IV Iron — HF</option>
+      </optgroup>
+      <optgroup label="Cardio-Renal-Metabolic">
+        <option value="finerenone">Finerenone — MRA</option>
+        <option value="sglt2_ckd">SGLT2i — CKD</option>
+        <option value="sglt2_t2dm_cvot">SGLT2i — T2DM CVOTs</option>
+        <option value="glp1_cvot">GLP-1 RA — CVOTs</option>
+        <option value="semaglutide_ckd">Semaglutide — CKD (FLOW)</option>
+        <option value="empagliflozin_post_mi">Empagliflozin — Post-MI</option>
+        <option value="dapagliflozin_post_mi">Dapagliflozin — Post-MI</option>
+      </optgroup>
+      <optgroup label="Lipid-Lowering">
+        <option value="pcsk9">PCSK9 Inhibitors</option>
+        <option value="bempedoic_acid">Bempedoic Acid</option>
+        <option value="inclisiran">Inclisiran — siRNA</option>
+        <option value="ezetimibe_cv">Ezetimibe</option>
+        <option value="icosapent_cv">Icosapent Ethyl</option>
+      </optgroup>
+      <optgroup label="Antithrombotic">
+        <option value="ticagrelor_acs">Ticagrelor — ACS</option>
+        <option value="rivaroxaban_vasc">Rivaroxaban — Vascular</option>
+        <option value="doac_af">DOACs — AF</option>
+        <option value="doac_vte">DOACs — VTE</option>
+      </optgroup>
+      <optgroup label="Hypertension">
+        <option value="intensive_bp">Intensive BP Control</option>
+        <option value="renal_denervation">Renal Denervation</option>
+      </optgroup>
+      <optgroup label="Obesity / Diabetes">
+        <option value="tirzepatide_t2dm">Tirzepatide — T2DM</option>
+        <option value="semaglutide_obesity">Semaglutide — Obesity</option>
+        <option value="tirzepatide_obesity">Tirzepatide — Obesity</option>
+        <option value="closed_loop_t1dm">Closed-Loop — T1DM</option>
+      </optgroup>
+      <optgroup label="Structural / Devices">
+        <option value="attr_cm">ATTR-CM — Amyloidosis</option>
+        <option value="mavacamten_hcm">Mavacamten — HCM</option>
+        <option value="mitraclip_mr">MitraClip — MR</option>
+        <option value="tavr_low_risk">TAVR — Low Risk</option>
+        <option value="catheter_ablation_af">Ablation — AF + HF</option>
+      </optgroup>
+      <optgroup label="Respiratory / PAH">
+        <option value="dupilumab_asthma">Dupilumab — Asthma</option>
+        <option value="tezepelumab_asthma">Tezepelumab — Asthma</option>
+        <option value="sotatercept_pah">Sotatercept — PAH</option>
+      </optgroup>
+      <optgroup label="Other">
+        <option value="dexrazoxane_cardio">Cardioprotection</option>
+      </optgroup>
     </select>
     <button id="patientModeToggle" onclick="togglePatientMode()" title="Toggle patient-friendly view" aria-label="Toggle patient mode" style="font-size:0.8rem;">
       <span id="patientModeIcon">&#128100;</span> <span id="patientModeLabel">Patient</span>
@@ -2693,7 +2713,7 @@ const CONFIG_LIBRARY = {
     subgroups: {},
     eligibility: { include: ["Phase III RCT", "SGLT2 inhibitor vs Placebo", "Reports 3-point MACE"], exclude: ["Phase I/II", "Non-randomized", "Pediatric"] },
     trials: [
-      { id: "BI 10773", nctId: "NCT01131676", year: 2015, phase: "PHASE3",
+      { id: "EMPA-REG OUTCOME", nctId: "NCT01131676", year: 2015, phase: "PHASE3",
         population: "Adults with T2DM at high CV risk", nTotal: 7064, nTreatment: 3532, nControl: 3532,
         status: "Published", reference: "See CT.gov NCT01131676",
         outcomes: {
@@ -2740,11 +2760,11 @@ const CONFIG_LIBRARY = {
         rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
         evidenceText: "DECLARE-TIMI58: N=17,190. See CT.gov for full results."
       },
-      { id: "Cardiovascular Outco", nctId: "NCT01986881", year: 2019, phase: "PHASE3",
+      { id: "VERTIS-CV", nctId: "NCT01986881", year: 2019, phase: "PHASE3",
         population: "Adults with T2DM at high CV risk", nTotal: 8246, nTreatment: 4123, nControl: 4123,
         status: "Published", reference: "See CT.gov NCT01986881",
         outcomes: {
-          mace: { tE: 0, tN: 4123, cE: 0, cN: 4123, hr: -0.75, hrLo: -0.98, hrHi: -0.53, src: 'CT.gov NCT01986881 results. clda model.' },
+          mace: { tE: 0, tN: 4123, cE: 0, cN: 4123, hr: 0.97, hrLo: 0.85, hrHi: 1.11, src: '3-pt MACE. Cannon 2020 NEJM. CORRECTED: CT.gov had HbA1c CLDA value (-0.75), not MACE HR.' },
           secondary_1: { tE: 0, tN: 4123, cE: 0, cN: 4123, hr: 0.88, hrLo: 0.75, hrHi: 1.034, src: 'CT.gov NCT01986881 results. cox proportional hazards model.' },
           secondary_2: { tE: 0, tN: 4123, cE: 0, cN: 4123, hr: 0.92, hrLo: 0.767, hrHi: 1.113, src: 'CT.gov NCT01986881 results. cox proportional hazards model.' },
           secondary_3: { tE: 0, tN: 4123, cE: 0, cN: 4123, hr: 0.81, hrLo: 0.63, hrHi: 1.036, src: 'CT.gov NCT01986881 results. cox proportional hazards model.' },
@@ -2829,9 +2849,9 @@ const CONFIG_LIBRARY = {
       { id: "PARADIGM-HF", nctId: "NCT01035255", year: 2014, phase: "PHASE3",
         population: "Adults with heart failure (HFrEF or HFpEF)", nTotal: 8442, nTreatment: 4221, nControl: 4221,
         status: "Published", reference: "See CT.gov NCT01035255",
-        outcomes: { mace: { tE: 0, tN: 4221, cE: 0, cN: 4221 } },
-        rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
-        evidenceText: "PARADIGM-HF: N=8,442. See CT.gov for full results."
+        outcomes: { mace: { tE: 914, tN: 4187, cE: 1117, cN: 4212, hr: 0.80, hrLo: 0.73, hrHi: 0.87, src: 'CV death or HF hospitalization. McMurray 2014 NEJM. Manually added — CT.gov had no structured results.' } },
+        rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Double-blind, enalapril-controlled. Stopped early for benefit." },
+        evidenceText: "PARADIGM-HF: N=8,442. Sacubitril/valsartan vs enalapril: HR 0.80 (0.73-0.87) for CV death/HF hosp. Landmark HFrEF trial."
       },
       { id: "PARAGON-HF", nctId: "NCT01920711", year: 2019, phase: "PHASE3",
         population: "Adults with heart failure (HFrEF or HFpEF)", nTotal: 4822, nTreatment: 2411, nControl: 2411,
@@ -3124,11 +3144,11 @@ const CONFIG_LIBRARY = {
     subgroups: {},
     eligibility: { include: ["Phase III RCT", "Canakinumab (anti-IL-1beta) vs Placebo", "Reports MACE"], exclude: ["Phase I/II", "Non-randomized", "Pediatric"] },
     trials: [
-      { id: "CANTOS", nctId: "NCT01327846", year: 2019, phase: "PHASE3",
-        population: "Adults with prior MI and elevated hsCRP", nTotal: 10066, nTreatment: 5033, nControl: 5033,
+      { id: "CANTOS", nctId: "NCT01327846", year: 2017, phase: "PHASE3",
+        population: "Adults with prior MI and elevated hsCRP", nTotal: 10061, nTreatment: 3344, nControl: 3344,
         status: "Published", reference: "See CT.gov NCT01327846",
         outcomes: {
-          mace: { tE: 0, tN: 5033, cE: 0, cN: 5033, hr: 0.86, hrLo: 0.75, hrHi: 0.99, src: 'CT.gov NCT01327846 results. log rank.' },
+          mace: { tE: 0, tN: 3344, cE: 0, cN: 3344, hr: 0.85, hrLo: 0.74, hrHi: 0.98, src: '3-pt MACE (150mg dose). Ridker 2017 NEJM. CORRECTED: CT.gov had dose-pooled HR 0.86.' },
           secondary_1: { tE: 0, tN: 5033, cE: 0, cN: 5033, hr: 0.82, hrLo: 0.72, hrHi: 0.94, src: 'CT.gov NCT01327846 results. log rank.' },
           secondary_2: { tE: 0, tN: 5033, cE: 0, cN: 5033, hr: 1.01, hrLo: 0.83, hrHi: 1.23, src: 'CT.gov NCT01327846 results. log rank.' },
           secondary_3: { tE: 0, tN: 5033, cE: 0, cN: 5033, hr: 0.87, hrLo: 0.77, hrHi: 0.99, src: 'CT.gov NCT01327846 results. regression, cox.' },
@@ -3167,10 +3187,8 @@ const CONFIG_LIBRARY = {
         population: "Adults with stable atherosclerotic vascular disease", nTotal: 27395, nTreatment: 13697, nControl: 13698,
         status: "Published", reference: "See CT.gov NCT01776424",
         outcomes: {
-          mace: { tE: 0, tN: 13697, cE: 0, cN: 13698, hr: 1.7, hrLo: 1.4, hrHi: 2.05, src: 'CT.gov NCT01776424 results. log rank.' },
-          secondary_1: { tE: 0, tN: 13697, cE: 0, cN: 13698, hr: 0.72, hrLo: 0.63, hrHi: 0.83, src: 'CT.gov NCT01776424 results. log rank.' },
-          secondary_2: { tE: 0, tN: 13697, cE: 0, cN: 13698, hr: 0.74, hrLo: 0.65, hrHi: 0.85, src: 'CT.gov NCT01776424 results. log rank.' },
-          secondary_3: { tE: 0, tN: 13697, cE: 0, cN: 13698, hr: 0.82, hrLo: 0.71, hrHi: 0.96, src: 'CT.gov NCT01776424 results. log rank.' }
+          mace: { tE: 0, tN: 13697, cE: 0, cN: 13698, hr: 0.76, hrLo: 0.66, hrHi: 0.86, src: 'CV death+MI+stroke. Eikelboom 2017 NEJM. CORRECTED: CT.gov primary was major bleeding (HR 1.70), not efficacy.' },
+          bleeding: { tE: 0, tN: 13697, cE: 0, cN: 13698, hr: 1.70, hrLo: 1.40, hrHi: 2.05, src: 'Major bleeding. CT.gov NCT01776424 primary safety outcome.' }
         },
         rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
         evidenceText: "COMPASS: N=27,395. See CT.gov for full results."
@@ -3179,7 +3197,7 @@ const CONFIG_LIBRARY = {
         population: "Adults with stable atherosclerotic vascular disease", nTotal: 6564, nTreatment: 3282, nControl: 3282,
         status: "Published", reference: "See CT.gov NCT02504216",
         outcomes: {
-          mace: { tE: 0, tN: 3282, cE: 0, cN: 3282, hr: 1.43, hrLo: 0.97, hrHi: 2.1, src: 'CT.gov NCT02504216 results. log rank.' },
+          mace: { tE: 0, tN: 3282, cE: 0, cN: 3282, hr: 0.85, hrLo: 0.76, hrHi: 0.96, src: 'Acute limb ischemia+amputation+MI+stroke+CV death. Bonaca 2020 NEJM. CORRECTED: CT.gov primary was major bleeding (HR 1.43).' },
           secondary_1: { tE: 0, tN: 3282, cE: 0, cN: 3282, hr: 0.8, hrLo: 0.71, hrHi: 0.91, src: 'CT.gov NCT02504216 results. log rank.' },
           secondary_2: { tE: 0, tN: 3282, cE: 0, cN: 3282, hr: 0.88, hrLo: 0.79, hrHi: 0.99, src: 'CT.gov NCT02504216 results. log rank.' },
           secondary_3: { tE: 0, tN: 3282, cE: 0, cN: 3282, hr: 0.72, hrLo: 0.62, hrHi: 0.85, src: 'CT.gov NCT02504216 results. log rank.' },
@@ -3614,14 +3632,14 @@ const CONFIG_LIBRARY = {
     subgroups: {},
     eligibility: { include: ["Phase III RCT", "TAVR (transcatheter aortic valve replacement) vs SAVR (surgical AVR)", "Reports All-cause mortality or disabling stroke at 1 year"], exclude: ["Phase I/II", "Non-randomized", "Pediatric"] },
     trials: [
-      { id: "P3", nctId: "NCT02675114", year: 2029, phase: "NA",
+      { id: "PARTNER-3", nctId: "NCT02675114", year: 2029, phase: "NA",
         population: "Adults with severe aortic stenosis at low surgical risk", nTotal: 1000, nTreatment: 500, nControl: 500,
         status: "Published", reference: "See CT.gov NCT02675114",
         outcomes: { mace: { tE: 0, tN: 500, cE: 0, cN: 500 } },
         rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
         evidenceText: "P3: N=1,000. See CT.gov for full results."
       },
-      { id: "Medtronic Evolut Tra", nctId: "NCT02701283", year: 2026, phase: "NA",
+      { id: "Evolut Low Risk", nctId: "NCT02701283", year: 2026, phase: "NA",
         population: "Adults with severe aortic stenosis at low surgical risk", nTotal: 2223, nTreatment: 1111, nControl: 1112,
         status: "Published", reference: "See CT.gov NCT02701283",
         outcomes: {
@@ -3722,7 +3740,7 @@ const CONFIG_LIBRARY = {
         rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
         evidenceText: "ARISTOTLE: N=20,976. See CT.gov for full results."
       },
-      { id: "An Efficacy and Safe", nctId: "NCT00403767", year: 2010, phase: "PHASE3",
+      { id: "ROCKET-AF", nctId: "NCT00403767", year: 2010, phase: "PHASE3",
         population: "Adults with non-valvular atrial fibrillation", nTotal: 14269, nTreatment: 7134, nControl: 7135,
         status: "Published", reference: "See CT.gov NCT00403767",
         outcomes: {
@@ -3751,7 +3769,7 @@ const CONFIG_LIBRARY = {
         rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
         evidenceText: "EngageAFTIMI48: N=21,105. See CT.gov for full results."
       },
-      { id: "Randomized Evaluatio", nctId: "NCT00262600", year: 0, phase: "PHASE3",
+      { id: "RE-LY", nctId: "NCT00262600", year: 2009, phase: "PHASE3",
         population: "Adults with non-valvular atrial fibrillation", nTotal: 18113, nTreatment: 9056, nControl: 9057,
         status: "Published", reference: "See CT.gov NCT00262600",
         outcomes: {
@@ -3867,7 +3885,7 @@ const CONFIG_LIBRARY = {
     subgroups: {},
     eligibility: { include: ["Phase III RCT", "Dupilumab (anti-IL-4Ra) vs Placebo", "Reports Annualized exacerbation rate"], exclude: ["Phase I/II", "Non-randomized", "Pediatric"] },
     trials: [
-      { id: "Evaluation of Dupilu", nctId: "NCT02414854", year: 2017, phase: "PHASE3",
+      { id: "LIBERTY-QUEST", nctId: "NCT02414854", year: 2017, phase: "PHASE3",
         population: "Adults with moderate-to-severe asthma or type 2 COPD", nTotal: 1902, nTreatment: 951, nControl: 951,
         status: "Published", reference: "See CT.gov NCT02414854",
         outcomes: {
@@ -4169,7 +4187,7 @@ const CONFIG_LIBRARY = {
         rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
         evidenceText: "CASTLE-AF: N=398. See CT.gov for full results."
       },
-      { id: "AuTop", nctId: "NCT02288832", year: 2022, phase: "PHASE2, PHASE3",
+      { id: "EAST-AFNET-4", nctId: "NCT02288832", year: 2022, phase: "PHASE2, PHASE3",
         population: "Adults with AF and HF", nTotal: 6800, nTreatment: 3400, nControl: 3400,
         status: "Published", reference: "See CT.gov NCT02288832",
         outcomes: { mace: { tE: 0, tN: 3400, cE: 0, cN: 3400 } },
@@ -4202,7 +4220,7 @@ const CONFIG_LIBRARY = {
     subgroups: {},
     eligibility: { include: ["Phase III RCT", "Sotatercept (activin signaling inhibitor) vs Placebo", "Reports 6-minute walk distance change"], exclude: ["Phase I/II", "Non-randomized", "Pediatric"] },
     trials: [
-      { id: "A Study of Sotaterce", nctId: "NCT04576988", year: 2022, phase: "PHASE3",
+      { id: "STELLAR", nctId: "NCT04576988", year: 2022, phase: "PHASE3",
         population: "Adults with PAH on background therapy", nTotal: 324, nTreatment: 162, nControl: 162,
         status: "Published", reference: "See CT.gov NCT04576988",
         outcomes: {
@@ -4290,7 +4308,7 @@ const CONFIG_LIBRARY = {
         rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
         evidenceText: "DCLP3: N=168. See CT.gov for full results."
       },
-      { id: "Preterm Functional E", nctId: "NCT04531566", year: 2022, phase: "NA",
+      { id: "CL-TRIAL-2", nctId: "NCT04531566", year: 2022, phase: "NA",
         population: "Adults or adolescents with T1DM", nTotal: 50, nTreatment: 25, nControl: 25,
         status: "Published", reference: "See CT.gov NCT04531566",
         outcomes: { mace: { tE: 0, tN: 25, cE: 0, cN: 25 } },
@@ -4310,7 +4328,12 @@ const CONFIG_LIBRARY = {
    SECTION 3: APP STATE + localStorage
    ======================================================================= */
 const _configParam = new URLSearchParams(window.location.search).get('config') || 'colchicine_cvd';
-const STORAGE_KEY = 'livingmeta_' + (CONFIG_LIBRARY[_configParam] ? _configParam : 'colchicine_cvd') + '_v1';
+let STORAGE_KEY = 'livingmeta_' + (CONFIG_LIBRARY[_configParam] ? _configParam : 'colchicine_cvd') + '_v1';
+
+function updateStorageKey(configId) {
+  const validId = CONFIG_LIBRARY[configId] ? configId : 'colchicine_cvd';
+  STORAGE_KEY = 'livingmeta_' + validId + '_v1';
+}
 
 const DEFAULT_STATE = {
   version: '1.0.0',
@@ -4361,7 +4384,18 @@ const DEFAULT_STATE = {
   certHash: null,
 
   /* Audit log */
-  auditLog: []
+  auditLog: [],
+
+  /* Runtime fields (must be in DEFAULT_STATE to survive reload) */
+  discovered: [],
+  pubmedResults: [],
+  openalexResults: [],
+  harvestResults: null,
+  subgroupResults: null,
+  synthAllOutcomes: null,
+  lastLivingUpdate: null,
+  settings: { tau2Method: 'DL', useHKSJ: false, confLevel: 0.95 },
+  results: null
 };
 
 let AppState = null;
@@ -4549,6 +4583,10 @@ function applyDarkMode() {
    ======================================================================= */
 function handleConfigChange(configId) {
   if (!CONFIG_LIBRARY[configId]) return;
+  /* Save current config state before switching */
+  saveState();
+  /* Switch to new config storage */
+  updateStorageKey(configId);
   AppState.configId = configId;
   /* Reset ALL mutable state to prevent stale data from prior config */
   AppState.results = null;
@@ -4570,9 +4608,15 @@ function handleConfigChange(configId) {
   renderProtocolTab();
   renderScreenTab();
   renderExtractTab();
-  /* Clear stale synthesis/bias/GRADE/certify displays */
-  const synthArea = document.getElementById('synthesisResultsArea');
-  if (synthArea) synthArea.innerHTML = '<div class="stub-area">Run synthesis to generate results for the new configuration.</div>';
+  /* Purge Plotly plots to prevent memory leaks on config switch */
+  ['forestPlotContainer','funnelPlotContainer','galbraithPlot','baujatPlot','labbePlot',
+   'goshPlot','doiPlot','tsaPlotContainer','predDistPlot','seqBayesPlot','cdCurvePlot',
+   'subgroupForestPlot','bayesPosteriorPlot','nntCurvePlot','metaRegPlot'
+  ].forEach(function(id) { var el = document.getElementById(id); if (el) { try { Plotly.purge(el); } catch(e) {} } });
+  /* Clear stale result panels */
+  ['synthesisResultsArea','trackAResults','trackBResults','gradeSofTable',
+   'convergenceDashboard','methodsParagraph','certBundleStatus'
+  ].forEach(function(id) { var el = document.getElementById(id); if (el) el.innerHTML = '<div class="stub-area">Run synthesis for new configuration.</div>'; });
 }
 
 
@@ -7328,8 +7372,8 @@ function getTrialOutcome(trial, outcomeKey) {
 }
 
 function synthesizeTrackA(trialsArr, outcomeKey) {
-  /* Track A: Pool published HRs */
-  const data = trialsArr.map(t => getTrialOutcome(t, outcomeKey)).filter(d => d && d.hr != null && d.hrLCI != null && d.hrUCI != null);
+  /* Track A: Pool published HRs — filter implausible values (negative, >50 = likely mean diff or percentage) */
+  const data = trialsArr.map(t => getTrialOutcome(t, outcomeKey)).filter(d => d && d.hr != null && d.hr > 0 && d.hr < 50 && d.hrLCI != null && d.hrLCI > 0 && d.hrUCI != null && d.hrUCI > 0);
   if (data.length < 2) return null;
   const effects = data.map(d => calcLogHR(d.hr, d.hrLCI, d.hrUCI));
   const yi = effects.map(e => e.yi), vi = effects.map(e => e.vi);
@@ -7348,10 +7392,11 @@ function synthesizeTrackA(trialsArr, outcomeKey) {
 }
 
 function synthesizeTrackB(trialsArr, outcomeKey) {
-  /* Track B: OR from event counts */
+  /* Track B: OR from event counts — skip placeholder data (tE=0 AND cE=0) */
   const data = trialsArr.map(t => {
     const oc = getTrialOutcome(t, outcomeKey);
     if (!oc || oc.tE == null || oc.cE == null) return null;
+    if (oc.tE === 0 && oc.cE === 0) return null; /* Skip placeholder/missing event counts */
     return oc;
   }).filter(Boolean);
   if (data.length < 2) return null;
@@ -13141,9 +13186,9 @@ function renderPatientSummary() {
   const ciLo = Math.exp(track.primary.ci[0]);
   const ciHi = Math.exp(track.primary.ci[1]);
   const config = getConfig();
-  const intervention = config.pico?.intervention ?? 'Treatment';
-  const comparator = config.pico?.comparator ?? 'Control';
-  const outcomeName = config.pico?.outcomes?.find(o => o.id === r.outcomeKey)?.name ?? r.outcomeKey;
+  const intervention = escapeHtml(config.pico?.intervention ?? 'Treatment');
+  const comparator = escapeHtml(config.pico?.comparator ?? 'Control');
+  const outcomeName = escapeHtml(config.pico?.outcomes?.find(o => o.id === r.outcomeKey)?.name ?? r.outcomeKey);
 
   /* Traffic light: green (benefit), amber (uncertain), red (harm) */
   let light, lightColor, plainText;
