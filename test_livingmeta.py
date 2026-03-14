@@ -81,8 +81,8 @@ def run_tests():
             'togglePatientMode();var on=patientMode;togglePatientMode();return on===true && patientMode===false'))
 
         # ─── 25-28: Data fix verification ───
-        ok('ELIXA 3pt MACE', d.execute_script(
-            'return CONFIG_LIBRARY.glp1_cvot.trials[0].outcomes.mace.hr===0.97'))
+        ok('ELIXA 4pt MACE verified', d.execute_script(
+            'return CONFIG_LIBRARY.glp1_cvot.trials[0].outcomes.mace.hr===1.02'))
         ok('SOLOIST estimand', d.execute_script(
             'return CONFIG_LIBRARY.sglt2_hf.trials[4].outcomes.mace.estimandType==="RR_RECURRENT"'))
         ok('SPRINT main', d.execute_script(
