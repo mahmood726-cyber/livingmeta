@@ -6319,7 +6319,7 @@ async function fetchStudiesBatch(nctIds) {
      This works from file:// protocol (unlike single-study endpoint) */
   if (!nctIds || nctIds.length === 0) return [];
   /* Filter to valid NCT IDs only */
-  const validIds = nctIds.filter(id => /^NCT\d{7,8}$/.test(id));
+  const validIds = nctIds.filter(id => /^NCT\d{8}$/.test(id));
   if (validIds.length === 0) return [];
   const allResults = [];
   /* CT.gov allows up to 20 IDs per request */

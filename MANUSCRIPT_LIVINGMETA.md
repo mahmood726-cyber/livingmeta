@@ -52,7 +52,7 @@ A fallback base-R DerSimonian-Laird estimator provides validation when metafor i
 
 ### Clinical Configurations
 
-Nine pre-configured clinical topics serve as demonstration datasets and validation fixtures:
+Forty pre-configured clinical topics serve as demonstration datasets and validation fixtures, spanning 10 therapeutic areas organized by optgroup in the configuration selector. The following table shows the 16 multi-trial configurations that produce pooled analyses (an additional 24 single-trial or continuous-outcome configurations serve as discovery-mode starting points):
 
 | Configuration | Therapeutic Area | Trials | Patients |
 |--------------|-----------------|--------|----------|
