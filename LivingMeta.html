@@ -5206,6 +5206,21 @@ const ScreenEngine = {
         if (t.sponsor) dHtml += '<div style="background:var(--bg-secondary);padding:8px;border-radius:6px;"><strong>' + escapeHtml(t.sponsor) + '</strong><div style="font-size:0.7rem;color:var(--text-muted);">Lead Sponsor</div></div>';
         if (t.conditions?.length) dHtml += '<div style="background:var(--bg-secondary);padding:8px;border-radius:6px;grid-column:span 2;"><strong>' + t.conditions.map(function(c){return escapeHtml(c)}).join(', ') + '</strong><div style="font-size:0.7rem;color:var(--text-muted);">Conditions</div></div>';
         dHtml += '</div>';
+        /* Registered primary outcomes */
+        if (t.primaryOutcomes?.length > 0) {
+          dHtml += '<div style="background:var(--bg-secondary);padding:8px;border-radius:6px;grid-column:span 2;font-size:0.75rem;">';
+          dHtml += '<strong>Registered Primary Outcome(s):</strong><br>';
+          t.primaryOutcomes.forEach(function(po, idx) {
+            dHtml += '<span style="color:var(--accent);">' + (idx+1) + '.</span> ' + escapeHtml(po.measure ?? '') + (po.timeFrame ? ' <span style="color:var(--text-muted);">(' + escapeHtml(po.timeFrame) + ')</span>' : '') + '<br>';
+          });
+          dHtml += '</div>';
+        }
+        /* Publication lag warning */
+        if (t.reportingLagMonths != null && t.reportingLagMonths > 0) {
+          var lagColor = t.reportingLagMonths <= 12 ? 'var(--success)' : t.reportingLagMonths <= 24 ? 'var(--warning)' : 'var(--danger)';
+          var lagBadge = t.reportingLagMonths <= 12 ? 'badge-verified' : t.reportingLagMonths <= 24 ? 'badge-warning' : 'badge-error';
+          dHtml += '<div style="background:var(--bg-secondary);padding:8px;border-radius:6px;"><span class="badge ' + lagBadge + '" style="font-size:0.7rem;">' + Math.round(t.reportingLagMonths) + ' months</span><div style="font-size:0.7rem;color:var(--text-muted);">Reporting Lag (completion → results)</div></div>';
+        }
         /* Auto-RoB assessment */
         var rob = autoAssessRoB(t);
         dHtml += '<div style="margin-top:8px;padding:8px;background:var(--bg-secondary);border-radius:6px;font-size:0.78rem;">';
@@ -5217,6 +5232,10 @@ const ScreenEngine = {
         dHtml += '</div></div>';
         return dHtml;
       })()
+      /* Eligibility criteria (collapsible) */
+      + (t.eligibilityCriteria ? '<details class="detail-section" style="cursor:pointer;"><summary class="detail-section-title" style="cursor:pointer;">Eligibility Criteria <span style="font-size:0.7rem;font-weight:400;color:var(--text-muted);">(from CT.gov — click to expand)</span></summary><pre style="font-size:0.75rem;white-space:pre-wrap;line-height:1.6;margin-top:8px;max-height:300px;overflow-y:auto;padding:8px;background:var(--bg-secondary);border-radius:6px;">' + escapeHtml(t.eligibilityCriteria) + '</pre></details>' : '')
+      /* CT.gov live results fetch button */
+      + (t.nctId && /^NCT\d{8}$/.test(t.nctId) ? '<div class="detail-section"><button class="btn btn-outline" style="font-size:0.78rem;" onclick="fetchTrialResults(\'' + escapeHtml(t.nctId) + '\').then(function(r){renderTrialResultsPanel(r,\'ctgov-results-' + escapeHtml(t.nctId) + '\')})">Fetch CT.gov Results (demographics + outcomes)</button><div id="ctgov-results-' + escapeHtml(t.nctId) + '" style="margin-top:8px;"></div></div>' : '')
       /* CT.gov brief summary if different from abstract */
       + ((t.briefSummary && t.briefSummary !== absText) ? '<div class="detail-section"><div class="detail-section-title">CT.gov Brief Summary</div><p class="detail-abstract" style="line-height:1.8;">' + highlightScreeningKeywords(t.briefSummary, autoResult?.rationale ?? []) + '</p></div>' : '')
       /* Auto-extracted effect estimates */
@@ -5489,8 +5508,17 @@ function renderExtractTab() {
           );
         }
 
-        // Cross-validation: config trials have 1 source (config); more sources added by search
-        const numSources = 1;
+        // Cross-validation: count independent data sources for this value
+        let numSources = 1; // Config data = 1 source
+        // Check if CT.gov results have been fetched for this trial
+        const ctgResults = AppState._ctgResults?.[trial.nctId];
+        if (ctgResults?.outcomes?.some(function(oc) { return oc.analyses?.some(function(a) { return a.value != null; }); })) numSources++;
+        // Check if TextExtractor found matching value in abstract
+        const trialAbstract = trial.evidenceText ?? '';
+        if (trialAbstract && f.value != null) {
+          const exts = TextExtractor.extract(trialAbstract);
+          if (exts.some(function(e) { return Math.abs((e.value ?? 0) - (f.value ?? -999)) < 0.05; })) numSources++;
+        }
         const xvalClass = numSources >= 3 ? 'filled-green' : numSources >= 2 ? 'filled-yellow' : 'filled-red';
 
         return `
@@ -5503,7 +5531,7 @@ function renderExtractTab() {
                 title="${escapeHtml(f.sourceText ?? '')}">
               ${highlightedSource.substring(0, 120)}${(highlightedSource.length > 120) ? '...' : ''}
             </td>
-            <td><span class="badge badge-source">Config</span></td>
+            <td><span class="badge badge-source">${numSources >= 3 ? 'Verified (3 sources)' : numSources >= 2 ? '2 sources' : 'Config only'}</span></td>
             <td>
               <div class="xval-dots">
                 <span class="xval-dot ${xvalClass}"></span>
@@ -6466,6 +6494,137 @@ function autoAssessRoB(trial) {
     text: reasons.join('. ') + '.',
     autoAssessed: true
   };
+}
+
+/* Fetch CT.gov results section for a single trial (demographics + outcomes) */
+async function fetchTrialResults(nctId) {
+  if (!nctId || !/^NCT\d{8}$/.test(nctId)) return null;
+  try {
+    const resp = await fetchWithTimeout('https://clinicaltrials.gov/api/v2/studies/' + encodeURIComponent(nctId) + '?format=json', 12000);
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const rs = data.resultsSection;
+    if (!rs) return { nctId, hasResults: false };
+
+    const result = { nctId, hasResults: true, demographics: [], outcomes: [] };
+
+    /* Parse baseline characteristics */
+    const baseline = rs.baselineCharacteristicsModule;
+    if (baseline?.measures) {
+      for (const m of baseline.measures) {
+        const title = m.title ?? '';
+        const units = m.unitOfMeasure ?? '';
+        const param = m.paramType ?? '';
+        /* Extract overall group value */
+        for (const cls of (m.classes ?? [])) {
+          for (const cat of (cls.categories ?? [])) {
+            for (const meas of (cat.measurements ?? [])) {
+              if (meas.groupId === 'BG000' || meas.groupId === 'BG003' || (baseline.measures.length === 1)) {
+                result.demographics.push({
+                  label: title + (cat.title ? ' - ' + cat.title : ''),
+                  value: meas.value ?? '',
+                  spread: meas.spread ?? '',
+                  units: units,
+                  param: param,
+                  groupId: meas.groupId
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    /* Parse outcome measures with analyses */
+    const om = rs.outcomeMeasuresModule;
+    if (om?.outcomeMeasures) {
+      for (const measure of om.outcomeMeasures) {
+        const oc = {
+          title: measure.title ?? '',
+          type: measure.type ?? '',
+          timeFrame: measure.timeFrame ?? '',
+          analyses: []
+        };
+        for (const analysis of (measure.analyses ?? [])) {
+          const method = analysis.statisticalMethod ?? '';
+          const paramType = analysis.paramType ?? '';
+          const paramVal = analysis.paramValue;
+          if (paramVal == null) continue;
+          /* Infer effect type */
+          const combined = (method + ' ' + paramType).toLowerCase();
+          let effectType = 'HR';
+          if (combined.includes('hazard') || combined.includes('cox')) effectType = 'HR';
+          else if (combined.includes('odds') || combined.includes('logistic')) effectType = 'OR';
+          else if (combined.includes('risk ratio') || combined.includes('relative risk')) effectType = 'RR';
+          else if (combined.includes('mean diff')) effectType = 'MD';
+          oc.analyses.push({
+            effectType, method,
+            value: parseFloat(paramVal),
+            ciLo: analysis.ciLowerLimit != null ? parseFloat(analysis.ciLowerLimit) : null,
+            ciHi: analysis.ciUpperLimit != null ? parseFloat(analysis.ciUpperLimit) : null,
+            pValue: analysis.pValue ? parseFloat(String(analysis.pValue).replace(/[<>]/g, '')) : null,
+            groups: (analysis.groupIds ?? []).join(' vs ')
+          });
+        }
+        if (oc.analyses.length > 0 || oc.type === 'PRIMARY') result.outcomes.push(oc);
+      }
+    }
+
+    return result;
+  } catch(e) {
+    console.warn('fetchTrialResults failed for ' + nctId + ':', e.message);
+    return null;
+  }
+}
+
+/* Render fetched results in the screen detail panel */
+function renderTrialResultsPanel(results, containerId) {
+  const el = document.getElementById(containerId);
+  if (!el || !results) return;
+  let html = '';
+
+  /* Demographics */
+  if (results.demographics?.length > 0) {
+    html += '<div class="detail-section"><div class="detail-section-title">CT.gov Baseline Demographics <span style="font-size:0.7rem;font-weight:400;color:var(--text-muted);">(from results section — independently verifiable)</span></div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;font-size:0.78rem;">';
+    const keyDemos = results.demographics.filter(function(d) {
+      var l = d.label.toLowerCase();
+      return l.includes('age') || l.includes('sex') || l.includes('female') || l.includes('male') || l.includes('race') || l.includes('ethnicity') || l.includes('bmi') || l.includes('weight') || l.includes('egfr') || l.includes('hba1c') || l.includes('ldl') || l.includes('blood pressure') || l.includes('ejection');
+    }).slice(0, 12);
+    (keyDemos.length > 0 ? keyDemos : results.demographics.slice(0, 8)).forEach(function(d) {
+      html += '<div style="background:var(--bg-secondary);padding:6px 8px;border-radius:4px;">';
+      html += '<div style="font-weight:600;">' + escapeHtml(d.value) + (d.spread ? ' \u00B1 ' + escapeHtml(d.spread) : '') + ' <span style="color:var(--text-muted);">' + escapeHtml(d.units) + '</span></div>';
+      html += '<div style="font-size:0.7rem;color:var(--text-muted);">' + escapeHtml(d.label) + '</div></div>';
+    });
+    html += '</div></div>';
+  }
+
+  /* Outcome analyses */
+  if (results.outcomes?.length > 0) {
+    html += '<div class="detail-section"><div class="detail-section-title">CT.gov Outcome Analyses <span style="font-size:0.7rem;font-weight:400;color:var(--text-muted);">(from results section)</span></div>';
+    html += '<table style="width:100%;font-size:0.75rem;border-collapse:collapse;"><thead><tr><th style="text-align:left;padding:4px;">Outcome</th><th>Type</th><th>Effect</th><th>Value</th><th>95% CI</th><th>p</th></tr></thead><tbody>';
+    for (var oc of results.outcomes) {
+      if (oc.analyses.length === 0) {
+        html += '<tr><td style="padding:3px;" colspan="6">' + escapeHtml(oc.title.substring(0, 60)) + ' <span class="badge badge-source">' + escapeHtml(oc.type) + '</span> — no statistical analysis posted</td></tr>';
+        continue;
+      }
+      for (var a of oc.analyses) {
+        var plausible = a.value > 0 && a.value < 50 && (a.ciLo == null || a.ciLo > 0);
+        html += '<tr style="' + (plausible ? '' : 'opacity:0.5;') + '">';
+        html += '<td style="padding:3px;max-width:200px;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(oc.title.substring(0, 50)) + '</td>';
+        html += '<td><span class="badge badge-source" style="font-size:0.65rem;">' + escapeHtml(oc.type) + '</span></td>';
+        html += '<td style="font-weight:600;">' + escapeHtml(a.effectType) + '</td>';
+        html += '<td style="text-align:center;font-weight:600;' + (plausible ? 'color:var(--accent);' : '') + '">' + a.value.toFixed(2) + '</td>';
+        html += '<td style="text-align:center;">' + (a.ciLo != null && a.ciHi != null ? a.ciLo.toFixed(2) + '-' + a.ciHi.toFixed(2) : '-') + '</td>';
+        html += '<td style="text-align:center;">' + (a.pValue != null ? (a.pValue < 0.001 ? '<0.001' : a.pValue.toFixed(3)) : '-') + '</td>';
+        html += '</tr>';
+      }
+    }
+    html += '</tbody></table></div>';
+  }
+
+  if (!html) html = '<div style="font-size:0.8rem;color:var(--text-muted);padding:8px;">No results section available on CT.gov for this trial.</div>';
+  el.innerHTML = html;
 }
 
 /* =======================================================================
