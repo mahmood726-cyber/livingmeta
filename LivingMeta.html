@@ -5102,7 +5102,8 @@ const ScreenEngine = {
     }
 
     const srcLabel = this.srcLabels[t.source] ?? t.source;
-    const absText = t.abstract || 'No abstract available. Check the source database for more information.';
+    const absText = t.abstract || t.briefSummary || 'No abstract available. Check the source database for more information.';
+    const autoResult = autoScreen(t);
     const sr = t.screenReview ?? {};
 
     /* Review state badge */
@@ -5186,11 +5187,57 @@ const ScreenEngine = {
       + reasonSection
       /* Review */
       + reviewSection
-      /* Abstract */
+      /* Abstract with keyword highlighting */
       + '<div class="detail-section">'
-      + '<div class="detail-section-title">Abstract</div>'
-      + '<p class="detail-abstract">' + escapeHtml(absText) + '</p>'
+      + '<div class="detail-section-title">Abstract <span style="font-size:0.7rem;font-weight:400;color:var(--text-muted);">(screening keywords highlighted: <span style="background:#dcfce7;padding:1px 4px;border-radius:3px;">inclusion</span> <span style="background:#fee2e2;padding:1px 4px;border-radius:3px;">exclusion</span>)</span></div>'
+      + '<p class="detail-abstract" style="line-height:1.8;">' + highlightScreeningKeywords(absText, autoResult?.rationale ?? []) + '</p>'
       + '</div>'
+      /* Demographics & Trial Design (from CT.gov metadata) */
+      + (function() {
+        if (!t.enrollment && !t.phase && !t.allocation) return '';
+        var dHtml = '<div class="detail-section"><div class="detail-section-title">Trial Design &amp; Demographics <span style="font-size:0.7rem;font-weight:400;color:var(--text-muted);">(from CT.gov registry)</span></div>';
+        dHtml += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;font-size:0.8rem;">';
+        if (t.enrollment) dHtml += '<div style="background:var(--bg-secondary);padding:8px;border-radius:6px;"><strong>N = ' + Number(t.enrollment).toLocaleString() + '</strong><div style="font-size:0.7rem;color:var(--text-muted);">Enrollment</div></div>';
+        if (t.phase) dHtml += '<div style="background:var(--bg-secondary);padding:8px;border-radius:6px;"><strong>' + escapeHtml(t.phase) + '</strong><div style="font-size:0.7rem;color:var(--text-muted);">Phase</div></div>';
+        if (t.allocation) dHtml += '<div style="background:var(--bg-secondary);padding:8px;border-radius:6px;"><strong>' + escapeHtml(t.allocation) + '</strong><div style="font-size:0.7rem;color:var(--text-muted);">Allocation</div></div>';
+        if (t.masking) dHtml += '<div style="background:var(--bg-secondary);padding:8px;border-radius:6px;"><strong>' + escapeHtml(t.masking) + '</strong><div style="font-size:0.7rem;color:var(--text-muted);">Masking</div></div>';
+        if (t.sex) dHtml += '<div style="background:var(--bg-secondary);padding:8px;border-radius:6px;"><strong>' + escapeHtml(t.sex) + '</strong><div style="font-size:0.7rem;color:var(--text-muted);">Sex Eligibility</div></div>';
+        if (t.minAge || t.maxAge) dHtml += '<div style="background:var(--bg-secondary);padding:8px;border-radius:6px;"><strong>' + escapeHtml((t.minAge || '?') + ' - ' + (t.maxAge || '?')) + '</strong><div style="font-size:0.7rem;color:var(--text-muted);">Age Range</div></div>';
+        if (t.sponsor) dHtml += '<div style="background:var(--bg-secondary);padding:8px;border-radius:6px;"><strong>' + escapeHtml(t.sponsor) + '</strong><div style="font-size:0.7rem;color:var(--text-muted);">Lead Sponsor</div></div>';
+        if (t.conditions?.length) dHtml += '<div style="background:var(--bg-secondary);padding:8px;border-radius:6px;grid-column:span 2;"><strong>' + t.conditions.map(function(c){return escapeHtml(c)}).join(', ') + '</strong><div style="font-size:0.7rem;color:var(--text-muted);">Conditions</div></div>';
+        dHtml += '</div>';
+        /* Auto-RoB assessment */
+        var rob = autoAssessRoB(t);
+        dHtml += '<div style="margin-top:8px;padding:8px;background:var(--bg-secondary);border-radius:6px;font-size:0.78rem;">';
+        dHtml += '<strong>Auto Risk of Bias (' + escapeHtml(rob.overall) + '):</strong> ';
+        rob.reasons.forEach(function(r) {
+          var color = r.includes('low') ? 'var(--success)' : r.includes('high') ? 'var(--danger)' : 'var(--warning)';
+          dHtml += '<span style="color:' + color + ';margin-right:8px;">' + escapeHtml(r) + '</span>';
+        });
+        dHtml += '</div></div>';
+        return dHtml;
+      })()
+      /* CT.gov brief summary if different from abstract */
+      + ((t.briefSummary && t.briefSummary !== absText) ? '<div class="detail-section"><div class="detail-section-title">CT.gov Brief Summary</div><p class="detail-abstract" style="line-height:1.8;">' + highlightScreeningKeywords(t.briefSummary, autoResult?.rationale ?? []) + '</p></div>' : '')
+      /* Auto-extracted effect estimates */
+      + (function() {
+        var extractText = absText || t.briefSummary || '';
+        if (!extractText) return '';
+        var exts = TextExtractor.extract(extractText);
+        if (exts.length === 0) return '';
+        var extHtml = '<div class="detail-section"><div class="detail-section-title">Auto-Extracted Effect Estimates <span style="font-size:0.7rem;font-weight:400;color:var(--text-muted);">(from abstract text)</span></div>';
+        extHtml += '<table style="width:100%;font-size:0.78rem;border-collapse:collapse;"><thead><tr><th style="text-align:left;padding:4px;">Type</th><th>Value</th><th>95% CI</th><th>Confidence</th><th style="text-align:left;">Source Text</th></tr></thead><tbody>';
+        exts.slice(0, 8).forEach(function(e) {
+          var badge = e.tier === 'AUTO_VERIFIED' ? 'badge-verified' : e.tier === 'SPOT_CHECK' ? 'badge-warning' : 'badge-error';
+          extHtml += '<tr><td style="padding:4px;font-weight:600;">' + escapeHtml(e.effectType) + '</td>';
+          extHtml += '<td style="text-align:center;">' + (e.effectType === 'EVENTS' ? e.tE + '/' + e.tN + ' vs ' + e.cE + '/' + e.cN : e.value?.toFixed(2) ?? '-') + '</td>';
+          extHtml += '<td style="text-align:center;">' + (e.ciLo != null ? e.ciLo.toFixed(2) + '-' + e.ciHi.toFixed(2) : '-') + '</td>';
+          extHtml += '<td style="text-align:center;"><span class="badge ' + badge + '">' + escapeHtml(e.tier) + '</span></td>';
+          extHtml += '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;font-size:0.72rem;color:var(--text-muted);">' + escapeHtml(e.sourceText?.substring(0,100) ?? '') + '</td></tr>';
+        });
+        extHtml += '</tbody></table></div>';
+        return extHtml;
+      })()
       + '</div>';
   },
 
@@ -6211,6 +6258,33 @@ function deduplicateResults() {
    score >= 70 = Likely relevant RCT
    score 40-69 = Uncertain — needs manual review
    score < 40  = Unlikely relevant */
+/* Highlight screening keywords in abstract text */
+function highlightScreeningKeywords(text, rationale) {
+  if (!text) return '';
+  let html = escapeHtml(text);
+  /* Define inclusion (green) and exclusion (red) keyword patterns */
+  const includeKw = [/\brandomized\b/gi, /\bdouble.?blind\b/gi, /\bplacebo.?controlled\b/gi,
+    /\bMACE\b/g, /\bhazard ratio\b/gi, /\bHR\b/g, /\b95%?\s*CI\b/gi,
+    /\bcardiovascular\b/gi, /\bmyocardial infarction\b/gi, /\bstroke\b/gi,
+    /\bheart failure\b/gi, /\bphase III\b/gi, /\bphase 3\b/gi,
+    /\bcolchicine\b/gi, /\bfinerenone\b/gi, /\bdapagliflozin\b/gi,
+    /\bempagliflozin\b/gi, /\bsemaglutide\b/gi, /\btirzepatide\b/gi,
+    /\bevolocumab\b/gi, /\balirocumab\b/gi, /\brivaroxaban\b/gi,
+    /\bOR\s+\d/g, /\bRR\s+\d/g, /\bp\s*[=<]\s*0\.\d/gi];
+  const excludeKw = [/\bgout\b/gi, /\bpericarditis\b/gi, /\bFMF\b/gi,
+    /\bobservational\b/gi, /\bretrospective\b/gi, /\bcase.?control\b/gi,
+    /\bphase I\b/gi, /\bphase 1\b/gi, /\bhealthy volunteers?\b/gi,
+    /\banimal\b/gi, /\bin.?vitro\b/gi, /\bpharmacokinetic\b/gi,
+    /\bbioequivalence\b/gi, /\breview\b/gi, /\beditorial\b/gi];
+  for (const rx of includeKw) {
+    html = html.replace(rx, function(m) { return '<mark style="background:#dcfce7;padding:1px 2px;border-radius:2px;" title="Inclusion signal">' + m + '</mark>'; });
+  }
+  for (const rx of excludeKw) {
+    html = html.replace(rx, function(m) { return '<mark style="background:#fee2e2;padding:1px 2px;border-radius:2px;" title="Exclusion signal">' + m + '</mark>'; });
+  }
+  return html;
+}
+
 function classifyTrialScore(trial) {
   let score = 50;
   const title = String(trial.title ?? '').toLowerCase();
@@ -6334,6 +6408,66 @@ function autoScreen(trial) {
   return { decision, rationale, confidence, score };
 }
 
+/* Auto-assess Risk of Bias from CT.gov trial design metadata */
+function autoAssessRoB(trial) {
+  const domains = [];
+  const reasons = [];
+
+  /* D1: Randomization */
+  const alloc = (trial.allocation ?? '').toLowerCase();
+  if (alloc.includes('randomized') || alloc === 'randomized') {
+    domains.push('low'); reasons.push('D1: Randomized allocation');
+  } else if (alloc.includes('non-randomized') || alloc === '') {
+    domains.push('high'); reasons.push('D1: Non-randomized or allocation not reported');
+  } else {
+    domains.push('some'); reasons.push('D1: Allocation method unclear (' + escapeHtml(alloc) + ')');
+  }
+
+  /* D2: Deviations from intended interventions (blinding proxy) */
+  const mask = (trial.masking ?? '').toLowerCase();
+  if (mask.includes('double') || mask.includes('triple') || mask.includes('quadruple')) {
+    domains.push('low'); reasons.push('D2: Double/triple/quadruple-masked');
+  } else if (mask.includes('single')) {
+    domains.push('some'); reasons.push('D2: Single-masked (investigator or participant only)');
+  } else if (mask === 'none' || mask.includes('open') || mask === '') {
+    domains.push('some'); reasons.push('D2: Open-label or masking not reported');
+  } else {
+    domains.push('some'); reasons.push('D2: Masking unclear (' + escapeHtml(mask) + ')');
+  }
+
+  /* D3: Missing outcome data (use hasResults and enrollment as proxy) */
+  if (trial.hasResults) {
+    domains.push('low'); reasons.push('D3: Results posted on CT.gov');
+  } else {
+    domains.push('some'); reasons.push('D3: No structured results on CT.gov — cannot assess attrition');
+  }
+
+  /* D4: Measurement of outcome (assumed adjudicated for Phase III) */
+  const phase = (trial.phase ?? '').toLowerCase();
+  if (phase.includes('3') || phase.includes('iii')) {
+    domains.push('low'); reasons.push('D4: Phase III — likely adjudicated endpoints');
+  } else {
+    domains.push('some'); reasons.push('D4: Phase ' + escapeHtml(trial.phase ?? 'unknown') + ' — adjudication uncertain');
+  }
+
+  /* D5: Selection of reported result */
+  if (trial.nPrimaryOutcomes >= 1 && trial.hasResults) {
+    domains.push('low'); reasons.push('D5: Pre-registered primary outcome on CT.gov with results');
+  } else if (trial.nPrimaryOutcomes >= 1) {
+    domains.push('some'); reasons.push('D5: Pre-registered primary outcome but no results posted');
+  } else {
+    domains.push('high'); reasons.push('D5: No pre-registered primary outcome found');
+  }
+
+  const overall = domains.includes('high') ? 'high' : domains.filter(d => d === 'some').length >= 2 ? 'some' : domains.includes('some') ? 'some' : 'low';
+  return {
+    domains, overall, reasons,
+    domainLabels: ['Randomization', 'Deviations', 'Missing', 'Measurement', 'Selection'],
+    text: reasons.join('. ') + '.',
+    autoAssessed: true
+  };
+}
+
 /* =======================================================================
    SECTION 5c: CT.gov DEEP HARVESTER — Live Evidence Delta Engine
    Fetches detailed study records, results status, protocol outcomes,
@@ -6430,7 +6564,17 @@ function parseStudyRecord(raw) {
     /* Outcomes */
     primaryOutcomes, secondaryOutcomes,
     nPrimaryOutcomes: primaryOutcomes.length,
-    nSecondaryOutcomes: secondaryOutcomes.length
+    nSecondaryOutcomes: secondaryOutcomes.length,
+    /* Transparency fields */
+    briefSummary: ps.descriptionModule?.briefSummary ?? '',
+    detailedDescription: ps.descriptionModule?.detailedDescription ?? '',
+    masking: design.designInfo?.maskingInfo?.masking ?? '',
+    whoMasked: design.designInfo?.maskingInfo?.whoMasked ?? [],
+    eligibilityCriteria: ps.eligibilityModule?.eligibilityCriteria ?? '',
+    minAge: ps.eligibilityModule?.minimumAge ?? '',
+    maxAge: ps.eligibilityModule?.maximumAge ?? '',
+    sex: ps.eligibilityModule?.sex ?? 'ALL',
+    conditions: ps.conditionsModule?.conditions ?? []
   };
 }
 
@@ -8387,10 +8531,28 @@ function renderGradeTable() {
     const dg = info.downgrade ?? 0;
     const dgText = dg === 0 ? 'None' : dg === 0.5 ? 'Partial (-0.5)' : dg === 1 ? 'Serious (-1)' : 'Very serious (-' + dg + ')';
     const dgColor = dg === 0 ? 'var(--success)' : dg <= 0.5 ? 'var(--warning)' : 'var(--danger)';
+    /* Build evidence detail for each domain */
+    let evidence = '';
+    if (key === 'rob') {
+      const config = getConfig();
+      const contributing = config.trials.filter(function(t) { return getTrialOutcome(t, r.outcomeKey ?? 'mace') != null; });
+      evidence = contributing.map(function(t) {
+        var rob = t.rob?.overall ?? 'not assessed';
+        return escapeHtml(t.id) + ': ' + rob;
+      }).join(', ');
+    } else if (key === 'inconsistency') {
+      evidence = 'I\u00B2=' + (track?.primary?.I2?.toFixed(1) ?? '?') + '%, Q=' + (track?.primary?.Q?.toFixed(2) ?? '?') + ' (p=' + (track?.primary?.Qp?.toFixed(3) ?? '?') + ')';
+      if (track?.primary?.pi) evidence += ', PI: ' + Math.exp(track.primary.pi[0]).toFixed(2) + '-' + Math.exp(track.primary.pi[1]).toFixed(2);
+    } else if (key === 'imprecision') {
+      evidence = 'CI: ' + (track ? Math.exp(track.primary.ci[0]).toFixed(2) + '-' + Math.exp(track.primary.ci[1]).toFixed(2) : '?') + ', N=' + (track?.k ?? '?') + ' trials';
+    } else if (key === 'publicationBias') {
+      var bias = r.trackB?.bias ?? r.trackA?.bias;
+      evidence = bias ? 'Egger p=' + (bias.egger?.p?.toFixed(3) ?? '?') + ', TF k0=' + (bias.trimFill?.k0 ?? '?') : 'Not assessed';
+    }
     html += '<tr><td style="font-weight:600;">' + escapeHtml(domainLabels[key] ?? key) + '</td>';
     html += '<td style="color:' + dgColor + ';font-weight:600;">' + dgText + '</td>';
     html += '<td style="text-align:center;">' + dg + '</td>';
-    html += '<td>' + escapeHtml(info.reason ?? '') + '</td></tr>';
+    html += '<td>' + escapeHtml(info.reason ?? '') + '<br><span style="font-size:0.72rem;color:var(--text-muted);">Evidence: ' + evidence + '</span></td></tr>';
   }
   html += '</tbody></table>';
 
