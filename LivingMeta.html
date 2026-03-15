@@ -1640,6 +1640,9 @@
     <button class="btn btn-outline" id="btnExportCSV" disabled onclick="exportCSV()">
       &#128196; Export Data (CSV)
     </button>
+    <button class="btn btn-outline" onclick="exportReproducibilityCapsule()">
+      &#128190; Reproducibility Capsule
+    </button>
     <button class="btn btn-outline" onclick="exportPRISMA2020()">
       &#128202; PRISMA 2020 Flow (SVG)
     </button>
@@ -11408,6 +11411,74 @@ function doExportBundle() {
   URL.revokeObjectURL(url);
 }
 
+/* Reproducibility Capsule — bundles complete analysis state for independent verification */
+function exportReproducibilityCapsule() {
+  if (!AppState.results) { showToast('Run synthesis first.'); return; }
+  const config = getConfig();
+  const r = AppState.results;
+  const track = r.trackB ?? r.trackA;
+  const capsule = {
+    _meta: {
+      tool: 'LivingMeta v1.0',
+      generatedAt: new Date().toISOString(),
+      configId: AppState.configId,
+      configName: config.name
+    },
+    pico: config.pico,
+    settings: {
+      tau2Method: AppState.settings?.tau2Method ?? 'DL',
+      useHKSJ: AppState.settings?.useHKSJ ?? false,
+      confLevel: AppState.settings?.confLevel ?? 0.95,
+      outcomeKey: r.outcomeKey ?? 'mace'
+    },
+    trials: config.trials.map(t => ({
+      id: t.id, nctId: t.nctId, year: t.year, nTotal: t.nTotal,
+      nTreatment: t.nTreatment, nControl: t.nControl,
+      outcome: t.outcomes?.[r.outcomeKey ?? 'mace'] ?? null,
+      rob: t.rob?.overall ?? 'not assessed'
+    })),
+    synthesis: track ? {
+      k: track.k, measure: track.measure ?? 'OR',
+      pooledEstimate: Math.exp(track.primary.estimate),
+      ci: [Math.exp(track.primary.ci[0]), Math.exp(track.primary.ci[1])],
+      pValue: track.primary.pval,
+      tau2: track.primary.tau2, I2: track.primary.I2,
+      Q: track.primary.Q, Qp: track.primary.Qp,
+      predictionInterval: track.primary.pi ? [Math.exp(track.primary.pi[0]), Math.exp(track.primary.pi[1])] : null,
+      yi: track.yi, vi: track.vi
+    } : null,
+    grade: r.grade ?? null,
+    manuscript: document.getElementById('fullManuscriptArea')?.textContent ?? null,
+    rScript: null, /* Will be generated inline */
+    auditLog: AppState.auditLog?.slice(-50) ?? []
+  };
+  /* Generate R script inline */
+  try {
+    const origClick = document.createElement('a').click;
+    /* Temporarily override to prevent download — just capture the script */
+    const rBtn = document.querySelector('[onclick*="exportRScript"]');
+    /* Instead, generate R code directly */
+    if (track && track.yi) {
+      capsule.rScript = '# LivingMeta Reproducibility Capsule R Validation\nlibrary(metafor)\n'
+        + 'yi <- c(' + track.yi.map(v => v.toFixed(6)).join(', ') + ')\n'
+        + 'vi <- c(' + track.vi.map(v => v.toFixed(8)).join(', ') + ')\n'
+        + 'res <- rma(yi, vi, method="' + (AppState.settings?.tau2Method ?? 'DL') + '"'
+        + (AppState.settings?.useHKSJ ? ', test="knha"' : '') + ')\n'
+        + 'summary(res)\n'
+        + 'cat(sprintf("Pooled OR: %.4f (%.4f to %.4f)\\n", exp(coef(res)), exp(res$ci.lb), exp(res$ci.ub)))\n'
+        + 'cat(sprintf("tau2: %.6f, I2: %.1f%%\\n", res$tau2, res$I2))\n';
+    }
+  } catch(e) { /* ignore */ }
+  const blob = new Blob([JSON.stringify(capsule, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'LivingMeta_Capsule_' + AppState.configId + '_' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Reproducibility capsule exported (PICO + data + synthesis + R script + manuscript + audit log).');
+  logAudit('export_capsule', { configId: AppState.configId, k: track?.k });
+}
+
 function exportCSV() {
   const config = getConfig();
   const outcomeKey = AppState.results?.outcomeKey ?? 'mace';
@@ -11668,7 +11739,16 @@ function generateFullManuscript() {
   text += 'This living meta-analysis uses a certified baseline of ' + k + ' verified trials (N=' + totalN.toLocaleString() + ') with continuous registry monitoring for updates.\n\n';
 
   text += 'Statistical Analysis\n\n';
-  text += 'Odds ratios (OR) with ' + confPct + '% confidence intervals were computed for each trial using the inverse-variance method. ';
+  const hasTrackA = AppState.results?.trackA != null;
+  const hasTrackB = AppState.results?.trackB != null;
+  if (hasTrackA && hasTrackB) {
+    text += 'Dual-track synthesis was performed: Track A pooled published hazard ratios (HR) and Track B computed odds ratios (OR) from 2\u00D72 event data. ';
+  } else if (hasTrackA) {
+    text += 'Published hazard ratios (HR) were pooled using the generic inverse-variance method. ';
+  } else {
+    text += 'Odds ratios (OR) with ' + confPct + '% confidence intervals were computed for each trial using the inverse-variance method. ';
+  }
+  text += confPct + '% confidence intervals were used throughout. ';
   text += 'Between-study heterogeneity was estimated using the ' + tau2Method + ' estimator for \u03C4\u00B2';
   if (hksj) text += ', with the Hartung-Knapp-Sidik-Jonkman (HKSJ) adjustment for the pooled confidence interval (IQWiG modification applied when Q/(k\u22121) < 1)';
   text += '. ';
@@ -11725,21 +11805,22 @@ function generateFullManuscript() {
 
     text += (isPrimary ? 'Primary Outcome: ' : 'Secondary Outcome: ') + label + '\n\n';
 
-    if (!data || !data.trackB) {
+    const tb = data.trackB ?? data.trackA;
+    if (!data || !tb) {
       text += 'Data not available for this outcome. Run synthesis with outcome "' + key + '" selected.\n\n';
       continue;
     }
 
-    const tb = data.trackB;
     const kOc = tb.k ?? tb.yi?.length ?? 0;
-    const or = Math.exp(tb.primary.estimate).toFixed(2);
+    const measureLabel = tb.measure ?? (data.trackB ? 'OR' : 'HR');
+    const est = Math.exp(tb.primary.estimate).toFixed(2);
     const ciLo = Math.exp(tb.primary.ci[0]).toFixed(2);
     const ciHi = Math.exp(tb.primary.ci[1]).toFixed(2);
     const I2 = tb.primary.I2 != null ? tb.primary.I2.toFixed(0) : 'N/A';
     const pFreq = tb.primary.pval != null ? (tb.primary.pval < 0.001 ? '<0.001' : tb.primary.pval.toFixed(3)) : 'N/A';
 
     text += 'Data from ' + kOc + ' trials were pooled. ';
-    text += 'The pooled OR was ' + or + ' (' + confPct + '% CI: ' + ciLo + ' to ' + ciHi + '; p = ' + pFreq + '; I\u00B2 = ' + I2 + '%). ';
+    text += 'The pooled ' + measureLabel + ' was ' + est + ' (' + confPct + '% CI: ' + ciLo + ' to ' + ciHi + '; p = ' + pFreq + '; I\u00B2 = ' + I2 + '%). ';
 
     /* Prediction interval */
     if (tb.primary.pi) {
@@ -11755,8 +11836,10 @@ function generateFullManuscript() {
     }
 
     /* MH / Peto */
-    if (tb.mhOR != null) {
-      text += 'The Mantel-Haenszel OR was ' + Math.exp(tb.mhOR.logOR ?? tb.mhOR.estimate ?? 0).toFixed(2) + '. ';
+    if (tb.mhOR) {
+      text += 'The Mantel-Haenszel OR was ' + (tb.mhOR.or ?? Math.exp(tb.mhOR.lnOR ?? 0)).toFixed(2) + '. ';
+    } else if (tb.petoOR) {
+      text += 'The Peto OR was ' + (tb.petoOR.or ?? Math.exp(tb.petoOR.lnOR ?? 0)).toFixed(2) + '. ';
     }
 
     /* Bayesian */
