@@ -9,6 +9,7 @@
      CDN DEPENDENCIES
      ═══════════════════════════════════════════════════════════════════ -->
 <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<!-- NOTE: Tailwind CDN is for development. For production, consider removing or replacing with minimal inline CSS -->
 <script src="https://cdn.tailwindcss.com"></script>
 
 <!-- ═══════════════════════════════════════════════════════════════════
@@ -2728,7 +2729,7 @@ const CONFIG_LIBRARY = {
     eligibility: { include: ["Phase III RCT", "SGLT2 inhibitor vs Placebo", "Reports 3-point MACE"], exclude: ["Phase I/II", "Non-randomized", "Pediatric"] },
     trials: [
       { id: "EMPA-REG OUTCOME", nctId: "NCT01131676", year: 2015, phase: "PHASE3",
-        population: "Adults with T2DM at high CV risk", nTotal: 7064, nTreatment: 3532, nControl: 3532,
+        population: "Adults with T2DM at high CV risk", nTotal: 7020, nTreatment: 4687, nControl: 2333,
         status: "Published", reference: "See CT.gov NCT01131676",
         outcomes: {
           mace: { tE: 0, tN: 3532, cE: 0, cN: 3532, hr: 0.86, hrLo: 0.74, hrHi: 0.99, src: 'CT.gov NCT01131676 results. cox proportional hazards model.' },
@@ -2767,7 +2768,7 @@ const CONFIG_LIBRARY = {
         population: "Adults with T2DM at high CV risk", nTotal: 17190, nTreatment: 8595, nControl: 8595,
         status: "Published", reference: "See CT.gov NCT01730534",
         outcomes: {
-          mace: { tE: 0, tN: 8595, cE: 0, cN: 8595, hr: 0.83, hrLo: 0.73, hrHi: 0.95, src: 'CT.gov NCT01730534 results. regression, cox.' },
+          mace: { tE: 0, tN: 8595, cE: 0, cN: 8595, hr: 0.83, hrLo: 0.73, hrHi: 0.95, src: 'CV death/HF hosp CO-PRIMARY (not 3-pt MACE which was HR 0.93). CT.gov NCT01730534.' },
           secondary_1: { tE: 0, tN: 8595, cE: 0, cN: 8595, hr: 0.76, hrLo: 0.67, hrHi: 0.87, src: 'CT.gov NCT01730534 results. regression, cox.' },
           secondary_2: { tE: 0, tN: 8595, cE: 0, cN: 8595, hr: 0.93, hrLo: 0.82, hrHi: 1.04, src: 'CT.gov NCT01730534 results. regression, cox.' }
         },
@@ -4336,14 +4337,7 @@ const CONFIG_LIBRARY = {
         outcomes: { mace: { tE: 0, tN: 84, cE: 0, cN: 84 } },
         rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
         evidenceText: "DCLP3: N=168. See CT.gov for full results."
-      },
-      { id: "CL-TRIAL-2", nctId: "NCT04531566", year: 2022, phase: "NA",
-        population: "Adults or adolescents with T1DM", nTotal: 50, nTreatment: 25, nControl: 25,
-        status: "Published", reference: "See CT.gov NCT04531566",
-        outcomes: { mace: { tE: 0, tN: 25, cE: 0, cN: 25 } },
-        rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
-        evidenceText: "Preterm Functional E: N=50. See CT.gov for full results."
-      },
+      }
     ],
     ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
   },

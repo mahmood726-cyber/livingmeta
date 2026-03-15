@@ -52,7 +52,7 @@ A fallback base-R DerSimonian-Laird estimator provides validation when metafor i
 
 ### Clinical Configurations
 
-Forty pre-configured clinical topics serve as demonstration datasets and validation fixtures, spanning 10 therapeutic areas organized by optgroup in the configuration selector. The following table shows the 16 multi-trial configurations that produce pooled analyses (an additional 24 single-trial or continuous-outcome configurations serve as discovery-mode starting points):
+Nine pre-configured clinical topics serve as demonstration datasets and validation fixtures:
 
 | Configuration | Therapeutic Area | Trials | Patients |
 |--------------|-----------------|--------|----------|
@@ -128,7 +128,7 @@ LivingMeta uniquely combines five capabilities in a single distributable file: (
 
 ## Data Availability
 
-The complete source code, test suite, and clinical configurations are available at [GITHUB_URL_PLACEHOLDER]. The application can be used directly by opening the HTML file in any modern browser. No installation, server, or account is required.
+The complete source code, test suite, and clinical configurations are available at https://github.com/mahmood726-cyber/livingmeta. The application can be used directly by opening the HTML file in any modern browser. No installation, server, or account is required.
 
 ## Acknowledgments
 
