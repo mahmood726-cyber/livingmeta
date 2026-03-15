@@ -3351,7 +3351,7 @@ const CONFIG_LIBRARY = {
         population: "Adults with obesity (BMI>=30) or overweight with comorbiditi", nTotal: 1961, nTreatment: 980, nControl: 981,
         status: "Published", reference: "See CT.gov NCT03548935",
         outcomes: {
-          mace: { tE: 0, tN: 980, cE: 0, cN: 981, hr: 11.22, hrLo: 8.88, hrHi: 14.19, src: 'CT.gov NCT03548935 results. regression, logistic.' }
+          mace: { tE: 0, tN: 980, cE: 0, cN: 981, hr: null, /* responder OR for >=5% weight loss, NOT a hazard ratio */ hrLo: 8.88, hrHi: 14.19, src: 'CT.gov NCT03548935 results. regression, logistic.' }
         },
         rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
         evidenceText: "STEP 1: N=1,961. See CT.gov for full results."
@@ -3360,7 +3360,7 @@ const CONFIG_LIBRARY = {
         population: "Adults with obesity (BMI>=30) or overweight with comorbiditi", nTotal: 1210, nTreatment: 605, nControl: 605,
         status: "Published", reference: "See CT.gov NCT03552757",
         outcomes: {
-          mace: { tE: 0, tN: 605, cE: 0, cN: 605, hr: 4.88, hrLo: 3.58, hrHi: 6.64, src: 'CT.gov NCT03552757 results. regression, logistic.' }
+          mace: { tE: 0, tN: 605, cE: 0, cN: 605, hr: null, /* responder OR, NOT HR */ hrLo: 3.58, hrHi: 6.64, src: 'CT.gov NCT03552757 results. regression, logistic.' }
         },
         rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
         evidenceText: "STEP 2: N=1,210. See CT.gov for full results."
@@ -3369,7 +3369,7 @@ const CONFIG_LIBRARY = {
         population: "Adults with obesity (BMI>=30) or overweight with comorbiditi", nTotal: 611, nTreatment: 305, nControl: 306,
         status: "Published", reference: "See CT.gov NCT03611582",
         outcomes: {
-          mace: { tE: 0, tN: 305, cE: 0, cN: 306, hr: 6.11, hrLo: 4.04, hrHi: 9.26, src: 'CT.gov NCT03611582 results. regression, logistic.' }
+          mace: { tE: 0, tN: 305, cE: 0, cN: 306, hr: null, /* responder OR, NOT HR */ hrLo: 4.04, hrHi: 9.26, src: 'CT.gov NCT03611582 results. regression, logistic.' }
         },
         rob: { domains: ["low","low","low","low","low"], overall: "low", text: "Phase III RCT." },
         evidenceText: "STEP 3: N=611. See CT.gov for full results."
@@ -3404,7 +3404,7 @@ const CONFIG_LIBRARY = {
         population: "Adults with obesity (BMI>=30) or overweight", nTotal: 2539, nTreatment: 1269, nControl: 1270,
         status: "Published", reference: "See CT.gov NCT04184622",
         outcomes: {
-          mace: { tE: 0, tN: 1269, cE: 0, cN: 1270, hr: 23.99, hrLo: 17.43, hrHi: 33.02, src: 'CT.gov NCT04184622 results. regression, logistic.' },
+          mace: { tE: 0, tN: 1269, cE: 0, cN: 1270, hr: null, /* responder OR for >=5% weight loss, NOT HR */ hrLo: 17.43, hrHi: 33.02, src: 'CT.gov NCT04184622 results. regression, logistic.' },
           secondary_1: { tE: 0, tN: 1269, cE: 0, cN: 1270, hr: -10.7, hrLo: -11.2, hrHi: -10.1, src: 'CT.gov NCT04184622 results. mixed models analysis.' },
           secondary_2: { tE: 0, tN: 1269, cE: 0, cN: 1270, hr: 19.03, hrLo: 14.15, hrHi: 25.6, src: 'CT.gov NCT04184622 results. regression, logistic.' },
           secondary_3: { tE: 0, tN: 1269, cE: 0, cN: 1270, hr: 17.08, hrLo: 11.83, hrHi: 24.66, src: 'CT.gov NCT04184622 results. regression, logistic.' },
@@ -3436,7 +3436,7 @@ const CONFIG_LIBRARY = {
         population: "Adults with obesity (BMI>=30) or overweight", nTotal: 938, nTreatment: 469, nControl: 469,
         status: "Published", reference: "See CT.gov NCT04657003",
         outcomes: {
-          mace: { tE: 0, tN: 469, cE: 0, cN: 469, hr: 10.75, hrLo: 7.3, hrHi: 15.84, src: 'CT.gov NCT04657003 results. regression, logistic.' },
+          mace: { tE: 0, tN: 469, cE: 0, cN: 469, hr: null, /* responder OR, NOT HR */ hrLo: 7.3, hrHi: 15.84, src: 'CT.gov NCT04657003 results. regression, logistic.' },
           secondary_1: { tE: 0, tN: 469, cE: 0, cN: 469, hr: 20.94, hrLo: 13.06, hrHi: 33.58, src: 'CT.gov NCT04657003 results. regression, logistic.' },
           secondary_2: { tE: 0, tN: 469, cE: 0, cN: 469, hr: 28.38, hrLo: 13.81, hrHi: 58.31, src: 'CT.gov NCT04657003 results. regression, logistic.' },
           secondary_3: { tE: 0, tN: 469, cE: 0, cN: 469, hr: 28.54, hrLo: 9.73, hrHi: 83.73, src: 'CT.gov NCT04657003 results. regression, logistic.' },
@@ -4325,6 +4325,19 @@ const CONFIG_LIBRARY = {
 
 };
 
+/* Pre-computed R validation baselines (DL method, mace outcome) for automated comparison */
+const R_BASELINES = {
+  colchicine_cvd: { k: 5, measure: 'OR', estimate: 0.7940, ciLo: 0.6750, ciHi: 0.9339, tau2: 0.0188, I2: 58.6 },
+  finerenone: { k: 3, measure: 'OR', estimate: 0.8478, ciLo: 0.7846, ciHi: 0.9161, tau2: 0, I2: 0 },
+  sglt2_hf: { k: 5, measure: 'OR', estimate: 0.7116, ciLo: 0.6230, ciHi: 0.8128, tau2: 0.0164, I2: 72.7 },
+  glp1_cvot: { k: 10, measure: 'OR', estimate: 0.8529, ciLo: 0.8047, ciHi: 0.9039, tau2: 0.0031, I2: 37.4 },
+  pcsk9: { k: 2, measure: 'OR', estimate: 0.8440, ciLo: 0.7952, ciHi: 0.8959, tau2: 0, I2: 0 },
+  intensive_bp: { k: 4, measure: 'OR', estimate: 0.7870, ciLo: 0.7111, ciHi: 0.8711, tau2: 0, I2: 0 },
+  sglt2_ckd: { k: 3, measure: 'HR', estimate: 0.7053, ciLo: 0.6046, ciHi: 0.8228, tau2: 0.0132, I2: 71.7 },
+  sglt2_t2dm_cvot: { k: 4, measure: 'HR', estimate: 0.8926, ciLo: 0.8292, ciHi: 0.9608, tau2: 0.0002, I2: 3.6 },
+  arni_hf: { k: 2, measure: 'HR', estimate: 0.8182, ciLo: 0.7591, ciHi: 0.8819, tau2: 0, I2: 0 },
+  doac_af: { k: 4, measure: 'HR', estimate: 0.9092, ciLo: 0.7932, ciHi: 1.0423, tau2: 0.0125, I2: 67.1 }
+};
 
 
 /* =======================================================================
