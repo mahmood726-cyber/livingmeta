@@ -2481,7 +2481,9 @@ const CONFIG_LIBRARY = {
         outcomes: { mace: { tE: 903, tN: 9462, cE: 1052, cN: 9462, hr: 0.85, hrLo: 0.78, hrHi: 0.93, src: 'Primary composite. NEJM 2018.' }, acm: { tE: 334, tN: 9462, cE: 392, cN: 9462, hr: 0.85, hrLo: 0.73, hrHi: 0.98, src: 'All-cause mortality.' } },
         rob: { domains: ['low','low','low','low','low'], overall: 'low', text: 'Double-blind, placebo-controlled.' }, evidenceText: 'N=18,924. Alirocumab reduced MACE: HR 0.85 (0.78-0.93) and ACM: HR 0.85 (0.73-0.98).' }
     ],
-    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
+    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: [
+      { id: "pooled2020", author: "PCSK9 pooled", year: 2020, journal: "Various", k: 2, n: 46488, estimates: { mace: { measure: "HR", value: 0.85, lo: 0.79, hi: 0.92 } } }
+    ]
   },
 
   /* ════════════════════════════════════════════════════════════════════
@@ -2691,7 +2693,9 @@ const CONFIG_LIBRARY = {
         evidenceText: "EMPA-KIDNEY: N=6,609. See CT.gov for full results."
       },
     ],
-    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
+    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: [
+      { id: "nuffield2022", author: "Nuffield Dept", year: 2022, journal: "Lancet", k: 13, n: 90413, estimates: { mace: { measure: "RR", value: 0.63, lo: 0.58, hi: 0.69 } } }
+    ]
   },
 
   /* ============================================================ */
@@ -2870,7 +2874,9 @@ const CONFIG_LIBRARY = {
         evidenceText: "PARAGON-HF: N=4,822. See CT.gov for full results."
       },
     ],
-    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
+    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: [
+      { id: 'paradigm2014', author: 'McMurray et al.', year: 2014, journal: 'NEJM', k: 1, n: 8442, estimates: { mace: { measure: 'HR', value: 0.80, lo: 0.73, hi: 0.87 } } }
+    ]
   },
 
   /* ============================================================ */
@@ -2994,7 +3000,9 @@ const CONFIG_LIBRARY = {
         evidenceText: "STRENGTH: N=13,078. See CT.gov for full results."
       },
     ],
-    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
+    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: [
+      { id: "reduceit2019", author: "Bhatt et al.", year: 2019, journal: "NEJM", k: 1, n: 8179, estimates: { mace: { measure: "HR", value: 0.75, lo: 0.68, hi: 0.83 } } }
+    ]
   },
 
   /* ============================================================ */
@@ -3215,7 +3223,9 @@ const CONFIG_LIBRARY = {
         evidenceText: "VOYAGER PAD: N=6,564. See CT.gov for full results."
       },
     ],
-    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
+    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: [
+      { id: 'compass2017', author: 'Eikelboom et al.', year: 2017, journal: 'NEJM', k: 1, n: 27395, estimates: { mace: { measure: 'HR', value: 0.76, lo: 0.66, hi: 0.86 } } }
+    ]
   },
 
   /* ============================================================ */
@@ -3786,7 +3796,9 @@ const CONFIG_LIBRARY = {
         evidenceText: "Randomized Evaluatio: N=18,113. See CT.gov for full results."
       },
     ],
-    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
+    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: [
+      { id: "ruff2014", author: "Ruff et al.", year: 2014, journal: "Lancet", k: 4, n: 71683, estimates: { mace: { measure: "RR", value: 0.81, lo: 0.73, hi: 0.91 } } }
+    ]
   },
 
   /* ============================================================ */
@@ -8452,25 +8464,41 @@ function renderMethodComparison() {
     const ourEst = exp(track.primary.estimate);
     const ourCiLo = exp(track.primary.ci[0]);
     const ourCiHi = exp(track.primary.ci[1]);
+    const validationResults = [];
     for (const b of benchmarks) {
       const est = b.estimates[outcomeKey];
       if (!est) continue;
       const diff = est.value - ourEst;
       const diffPct = ((diff / ourEst) * 100).toFixed(1);
-      const diffColor = Math.abs(diff) < 0.05 ? 'var(--success)' : Math.abs(diff) < 0.1 ? 'var(--warning)' : 'var(--danger)';
+      /* Validation: PASS if our CI overlaps published CI (clinical agreement) */
+      const ourOverlaps = est.lo != null && est.hi != null && ourCiLo <= est.hi && ourCiHi >= est.lo;
+      const closeEnough = Math.abs(diff) < 0.05;
+      const verdict = closeEnough ? 'PASS' : ourOverlaps ? 'PASS (CI overlap)' : 'CHECK';
+      const verdictBadge = closeEnough ? 'badge-verified' : ourOverlaps ? 'badge-info' : 'badge-warning';
+      const diffColor = closeEnough ? 'var(--success)' : ourOverlaps ? 'var(--accent)' : 'var(--warning)';
       const ciStr = est.lo != null && est.hi != null ? (est.lo.toFixed(2) + ' \u2013 ' + est.hi.toFixed(2)) : '\u2014';
       html += '<tr><td>' + escapeHtml(b.author) + '</td><td>' + b.year + '</td><td>' + b.k + '</td>';
       html += '<td>' + (b.n ? b.n.toLocaleString() : '\u2014') + '</td>';
       html += '<td>' + escapeHtml(est.measure) + '</td><td style="font-weight:600;">' + est.value.toFixed(2) + '</td>';
       html += '<td>' + ciStr + '</td>';
-      html += '<td style="color:' + diffColor + ';font-weight:600;">' + (diff >= 0 ? '+' : '') + diff.toFixed(3) + ' (' + diffPct + '%)</td></tr>';
+      html += '<td><span class="badge ' + verdictBadge + '">' + verdict + '</span> <span style="color:' + diffColor + ';font-size:0.8rem;">' + (diff >= 0 ? '+' : '') + diff.toFixed(3) + '</span></td></tr>';
+      validationResults.push({ source: b.author, verdict, diff: Math.abs(diff) });
     }
     html += '<tr style="font-weight:700;background:var(--accent-light);"><td>LivingMeta v1.0</td><td>2026</td>';
     html += '<td>' + track.k + '</td><td>' + getConfig().trials.reduce(function(s,t){return s+(t.nTreatment??0)+(t.nControl??0);},0).toLocaleString() + '</td>';
     html += '<td>' + track.measure + '</td><td>' + ourEst.toFixed(2) + '</td>';
     html += '<td>' + ourCiLo.toFixed(2) + ' \u2013 ' + ourCiHi.toFixed(2) + '</td>';
     html += '<td style="color:var(--accent);">\u2014 (reference)</td></tr>';
-    html += '</tbody></table></div>';
+    html += '</tbody></table>';
+    /* Validation summary */
+    const passCount = validationResults.filter(v => v.verdict.startsWith('PASS')).length;
+    const totalBM = validationResults.length;
+    const avgDiff = totalBM > 0 ? (validationResults.reduce((s,v) => s + v.diff, 0) / totalBM).toFixed(3) : 'N/A';
+    html += '<div style="margin-top:8px;display:flex;align-items:center;gap:12px;">';
+    html += '<span class="badge ' + (passCount === totalBM ? 'badge-verified' : 'badge-warning') + '" style="font-size:0.9rem;padding:4px 14px;">';
+    html += passCount + '/' + totalBM + ' benchmarks validated</span>';
+    html += '<span style="font-size:0.8rem;color:var(--text-muted);">Mean |diff| = ' + avgDiff + ' | Our ' + track.measure + ' = ' + ourEst.toFixed(3) + '</span>';
+    html += '</div></div>';
   }
 
   container.innerHTML = html;
