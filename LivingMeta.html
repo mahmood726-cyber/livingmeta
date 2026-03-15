@@ -1497,6 +1497,9 @@
   <div class="section-header" style="margin-top:24px;">Confidence Distribution Prediction Interval (Nagashima-Noma 2019)</div>
   <div id="cdPredIntArea" class="stub-area">Run synthesis first</div>
 
+  <div class="section-header" style="margin-top:24px;">Sensitivity Analysis Summary</div>
+  <div id="sensitivityDashboard" class="stub-area">Run synthesis first</div>
+
   <div class="section-header" style="margin-top:24px;">Bayesian Posterior Density (Prior Sensitivity)</div>
   <div id="bayesPosteriorArea" class="stub-area">Run synthesis first</div>
   <div id="bayesPosteriorPlot" style="min-height:300px;"></div>
@@ -1643,6 +1646,9 @@
     </button>
     <button class="btn btn-outline" onclick="exportReproducibilityCapsule()">
       &#128190; Reproducibility Capsule
+    </button>
+    <button class="btn btn-outline" onclick="exportRevManXML()">
+      RevMan XML
     </button>
     <button class="btn btn-outline" onclick="exportPRISMA2020()">
       &#128202; PRISMA 2020 Flow (SVG)
@@ -7890,6 +7896,7 @@ function runSynthesis() {
   renderCDPredIntResults(cdPredInt);
   /* NEW: Bayesian posterior density, NNT curve, meta-regression */
   const bayesPosterior = computeBayesPosteriorDensity(evTrack);
+  renderSensitivityDashboard(evTrack, AppState.results);
   renderBayesPosteriorDensity(bayesPosterior);
   const nntCurve = computeNNTCurve(evTrack);
   renderNNTCurve(nntCurve);
@@ -8003,8 +8010,30 @@ function renderSynthResults() {
   const r = AppState.results;
   if (!r) return;
 
-  /* Check for estimand heterogeneity (e.g., recurrent-event RR pooled with first-event HR) */
+  /* Auto-validate against R_BASELINES */
   const config = getConfig();
+  const configId = AppState.configId;
+  const baseline = R_BASELINES[configId];
+  const track0 = r.trackB ?? r.trackA;
+  if (baseline && track0?.primary) {
+    const ourEst = Math.exp(track0.primary.estimate);
+    const diff = Math.abs(ourEst - baseline.estimate);
+    const pass = diff < 0.01;
+    const ciPass = Math.abs(Math.exp(track0.primary.ci[0]) - baseline.ciLo) < 0.02 && Math.abs(Math.exp(track0.primary.ci[1]) - baseline.ciHi) < 0.02;
+    const tau2Pass = Math.abs((track0.primary.tau2 ?? 0) - baseline.tau2) < 0.005;
+    const allPass = pass && ciPass && tau2Pass;
+    const badgeClass = allPass ? 'badge-verified' : 'badge-warning';
+    const validEl = document.createElement('div');
+    validEl.style.cssText = 'margin-bottom:12px;padding:10px;border-radius:6px;background:' + (allPass ? 'var(--success-bg)' : 'var(--warning-bg)') + ';border:1px solid ' + (allPass ? 'var(--success)' : 'var(--warning)') + ';font-size:0.82rem;';
+    validEl.innerHTML = '<span class="badge ' + badgeClass + '" style="font-size:0.85rem;padding:4px 12px;">' + (allPass ? 'R VALIDATED' : 'CHECK') + '</span> '
+      + baseline.measure + ': ours=' + ourEst.toFixed(3) + ' vs R=' + baseline.estimate.toFixed(3) + ' (|diff|=' + diff.toFixed(4) + ') '
+      + '| \u03C4\u00B2: ' + (track0.primary.tau2?.toFixed(4) ?? '0') + ' vs ' + baseline.tau2.toFixed(4)
+      + ' | I\u00B2: ' + (track0.primary.I2?.toFixed(1) ?? '0') + '% vs ' + baseline.I2.toFixed(1) + '%';
+    const synthArea = document.getElementById('synthesisResultsArea') ?? document.getElementById('trackBResults')?.parentElement;
+    if (synthArea) synthArea.prepend(validEl);
+  }
+
+  /* Check for estimand heterogeneity (e.g., recurrent-event RR pooled with first-event HR) */
   const outcomeKey = r.outcomeKey ?? 'mace';
   const recurrentTrials = config.trials.filter(t => t.outcomes?.[outcomeKey]?.estimandType === 'RR_RECURRENT');
   const estimandWarning = recurrentTrials.length > 0 && config.trials.some(t => t.outcomes?.[outcomeKey] && !t.outcomes[outcomeKey].estimandType);
@@ -8118,20 +8147,23 @@ function renderForestPlot(track, targetId) {
   const plotDiv = document.getElementById(targetId ?? 'forestPlotContainer');
   if (!plotDiv || !track) return;
   const exp = Math.exp;
-  const names = track.trials.map(t => t.name + ' (' + t.year + ')');
+  const names = track.trials.map(t => (t.name ?? 'Study') + ' (' + (t.year ?? '') + ')');
   const ests = track.yi.map(y => exp(y));
-  const loBounds = track.yi.map((y,i) => exp(y - CRITICAL_Z.Z_95 * Math.sqrt(track.vi[i])));
-  const hiBounds = track.yi.map((y,i) => exp(y + CRITICAL_Z.Z_95 * Math.sqrt(track.vi[i])));
+  const confLevel = AppState.settings?.confLevel ?? 0.95;
+  const zCritForest = normalQuantile(1 - (1 - confLevel) / 2);
+  const loBounds = track.yi.map((y,i) => exp(y - zCritForest * Math.sqrt(track.vi[i])));
+  const hiBounds = track.yi.map((y,i) => exp(y + zCritForest * Math.sqrt(track.vi[i])));
   const pooledEst = exp(track.primary.estimate);
   const pooledLo = exp(track.primary.ci[0]);
   const pooledHi = exp(track.primary.ci[1]);
-  const wts = track.primary.weights ?? track.vi.map(v => 1/v);
+  const tau2 = track.primary.tau2 ?? 0;
+  const wts = track.vi.map(v => 1/(v + tau2)); /* RE weights */
   const sumW = wts.reduce((a,b) => a+b, 0);
   const pctWts = wts.map(w => sumW > 0 ? (w/sumW*100) : 0);
 
-  /* Weight annotations */
+  /* Rich annotations with effect, CI, and weight */
   const annotations = names.map((n,i) =>
-    ests[i].toFixed(2) + ' [' + loBounds[i].toFixed(2) + ', ' + hiBounds[i].toFixed(2) + '] w=' + pctWts[i].toFixed(1) + '%'
+    n + '<br>' + track.measure + ' ' + ests[i].toFixed(2) + ' (' + loBounds[i].toFixed(2) + '\u2013' + hiBounds[i].toFixed(2) + ') w=' + pctWts[i].toFixed(1) + '%'
   );
 
   const allNames = [...names, 'Pooled (' + (AppState.synthesisSettings?.tau2Method ?? 'RE') + ')'];
@@ -12473,8 +12505,61 @@ function exportPRISMA2020() {
   a.download = 'LivingMeta_PRISMA2020_' + new Date().toISOString().slice(0, 10) + '.svg';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast('PRISMA 2020 flow diagram exported as SVG.');
+  /* Also render inline in the container */
+  const prismaEl = document.getElementById('prisma2020Container');
+  if (prismaEl) prismaEl.innerHTML = svg;
+  showToast('PRISMA 2020 flow diagram generated and exported as SVG.');
   logAudit('export_prisma2020', { format: 'svg' });
+}
+
+/* Export trial data as RevMan 5 compatible XML */
+function exportRevManXML() {
+  const config = getConfig();
+  const outcomeKey = AppState.results?.outcomeKey ?? 'mace';
+  const trials = config.trials;
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<!-- RevMan 5 compatible data export from LivingMeta v1.0 -->\n';
+  xml += '<!-- Generated: ' + new Date().toISOString() + ' -->\n';
+  xml += '<COCHRANE_REVIEW>\n';
+  xml += '  <COVER_SHEET>\n';
+  xml += '    <TITLE>' + escapeHtml(config.name ?? 'LivingMeta Analysis') + '</TITLE>\n';
+  xml += '  </COVER_SHEET>\n';
+  xml += '  <STUDIES_AND_REFERENCES>\n';
+  xml += '    <STUDIES>\n';
+  for (const t of trials) {
+    const oc = t.outcomes?.[outcomeKey];
+    if (!oc) continue;
+    xml += '      <STUDY DATA_SOURCE="LivingMeta" ID="' + escapeHtml(t.id) + '" NAME="' + escapeHtml(t.id) + ' ' + (t.year ?? '') + '" YEAR="' + (t.year ?? '') + '">\n';
+    xml += '        <IDENTIFIERS>\n';
+    if (t.nctId) xml += '          <REGISTRY_ID SOURCE="ClinicalTrials.gov">' + escapeHtml(t.nctId) + '</REGISTRY_ID>\n';
+    xml += '        </IDENTIFIERS>\n';
+    xml += '      </STUDY>\n';
+  }
+  xml += '    </STUDIES>\n';
+  xml += '  </STUDIES_AND_REFERENCES>\n';
+  xml += '  <ANALYSES_AND_DATA>\n';
+  xml += '    <COMPARISON ID="CMP-001" NAME="' + escapeHtml(config.pico?.intervention ?? 'Intervention') + ' vs ' + escapeHtml(config.pico?.comparator ?? 'Control') + '">\n';
+  xml += '      <DICH_OUTCOME ID="OUT-001" NAME="' + escapeHtml(config.pico?.outcomes?.[0]?.name ?? outcomeKey) + '" EFFECT_MEASURE="OR">\n';
+  for (const t of trials) {
+    const oc = t.outcomes?.[outcomeKey];
+    if (!oc || (oc.tE === 0 && oc.cE === 0)) continue;
+    xml += '        <DICH_DATA STUDY_ID="' + escapeHtml(t.id) + '"';
+    xml += ' EVENTS_1="' + (oc.tE ?? 0) + '" TOTAL_1="' + (oc.tN ?? t.nTreatment ?? 0) + '"';
+    xml += ' EVENTS_2="' + (oc.cE ?? 0) + '" TOTAL_2="' + (oc.cN ?? t.nControl ?? 0) + '"';
+    xml += '/>\n';
+  }
+  xml += '      </DICH_OUTCOME>\n';
+  xml += '    </COMPARISON>\n';
+  xml += '  </ANALYSES_AND_DATA>\n';
+  xml += '</COCHRANE_REVIEW>\n';
+  const blob = new Blob([xml], { type: 'application/xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'LivingMeta_RevMan_' + (config.id ?? 'export') + '.xml';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('RevMan XML exported (' + trials.length + ' studies).');
+  logAudit('export_revman', { outcome: outcomeKey, k: trials.length });
 }
 
 
@@ -13391,6 +13476,75 @@ function updatePrismaCounts() {
    FEATURE G: BAYESIAN POSTERIOR DENSITY WITH PRIOR SENSITIVITY
    Grid approximation: 3 priors × 500-point mu grid
    ═══════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE: SENSITIVITY ANALYSIS SUMMARY DASHBOARD
+   Compact card showing LOO stability, influence outliers, fragility
+   ═══════════════════════════════════════════════════════════════════ */
+function renderSensitivityDashboard(track, results) {
+  const area = document.getElementById('sensitivityDashboard');
+  if (!area || !track) { if (area) area.innerHTML = '<span style="opacity:0.6;">Run synthesis first</span>'; return; }
+  const exp = Math.exp;
+  const pooledOR = exp(track.primary.estimate);
+  const k = track.k ?? track.yi.length;
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">';
+
+  /* LOO stability */
+  const loo = track.loo ?? [];
+  if (loo.length > 0 && loo[0]) {
+    const looORs = loo.filter(l => l).map(l => exp(l.estimate));
+    const looMin = Math.min(...looORs), looMax = Math.max(...looORs);
+    const looRange = looMax - looMin;
+    const stable = looRange < 0.05;
+    html += '<div style="background:var(--bg-secondary);padding:12px;border-radius:var(--radius);border-left:3px solid ' + (stable ? 'var(--success)' : 'var(--warning)') + ';">';
+    html += '<div style="font-size:1.1rem;font-weight:700;color:' + (stable ? 'var(--success)' : 'var(--warning)') + ';">' + (stable ? 'Stable' : 'Sensitive') + '</div>';
+    html += '<div style="font-size:0.75rem;color:var(--text-muted);">Leave-One-Out</div>';
+    html += '<div style="font-size:0.78rem;margin-top:4px;">Range: ' + looMin.toFixed(3) + ' \u2013 ' + looMax.toFixed(3) + '</div>';
+    html += '</div>';
+  }
+
+  /* Influence outliers (Cook's D) */
+  const infl = track.influence ?? [];
+  if (infl.length > 0) {
+    const cookDs = infl.map(i => i.cooksd ?? 0);
+    const threshold = 4 / k;
+    const outliers = cookDs.filter(d => d > threshold).length;
+    html += '<div style="background:var(--bg-secondary);padding:12px;border-radius:var(--radius);border-left:3px solid ' + (outliers === 0 ? 'var(--success)' : 'var(--danger)') + ';">';
+    html += '<div style="font-size:1.1rem;font-weight:700;color:' + (outliers === 0 ? 'var(--success)' : 'var(--danger)') + ';">' + outliers + ' outlier' + (outliers !== 1 ? 's' : '') + '</div>';
+    html += '<div style="font-size:0.75rem;color:var(--text-muted);">Cook\'s D > 4/k</div>';
+    html += '<div style="font-size:0.78rem;margin-top:4px;">Max D = ' + Math.max(...cookDs).toFixed(3) + '</div>';
+    html += '</div>';
+  }
+
+  /* Fragility */
+  const frag = results?.fragility;
+  if (frag) {
+    const fi = frag.pooledFI ?? frag.results?.[0]?.fi;
+    const fragile = fi != null && fi <= 3;
+    html += '<div style="background:var(--bg-secondary);padding:12px;border-radius:var(--radius);border-left:3px solid ' + (fragile ? 'var(--danger)' : 'var(--success)') + ';">';
+    html += '<div style="font-size:1.1rem;font-weight:700;color:' + (fragile ? 'var(--danger)' : 'var(--success)') + ';">' + (fi ?? 'N/A') + '</div>';
+    html += '<div style="font-size:0.75rem;color:var(--text-muted);">Fragility Index</div>';
+    html += '<div style="font-size:0.78rem;margin-top:4px;">' + (fragile ? 'Fragile (FI \u2264 3)' : 'Robust') + '</div>';
+    html += '</div>';
+  }
+
+  /* Cumulative trend */
+  const cumul = track.cumulative ?? [];
+  if (cumul.length >= 3) {
+    const firstOR = exp(cumul[0].estimate);
+    const lastOR = exp(cumul[cumul.length - 1].estimate);
+    const trend = Math.abs(lastOR - firstOR) < 0.05 ? 'Stable' : lastOR < firstOR ? 'Decreasing' : 'Increasing';
+    const trendColor = trend === 'Stable' ? 'var(--success)' : 'var(--warning)';
+    html += '<div style="background:var(--bg-secondary);padding:12px;border-radius:var(--radius);border-left:3px solid ' + trendColor + ';">';
+    html += '<div style="font-size:1.1rem;font-weight:700;color:' + trendColor + ';">' + trend + '</div>';
+    html += '<div style="font-size:0.75rem;color:var(--text-muted);">Cumulative Trend</div>';
+    html += '<div style="font-size:0.78rem;margin-top:4px;">' + cumul[0].year + ': ' + firstOR.toFixed(3) + ' \u2192 ' + cumul[cumul.length-1].year + ': ' + lastOR.toFixed(3) + '</div>';
+    html += '</div>';
+  }
+
+  html += '</div>';
+  area.innerHTML = html;
+}
+
 function computeBayesPosteriorDensity(track) {
   if (!track || !track.yi || track.yi.length < 2) return null;
   const tau2 = track.primary?.tau2 ?? 0;
