@@ -2554,7 +2554,10 @@ const CONFIG_LIBRARY = {
         outcomes: { mace: { tE: 54, tN: 522, cE: 18, cN: 257, src: 'Exploratory MACE. 2:1 randomization.' } },
         rob: { domains: ['low','low','low','low','low'], overall: 'low', text: '2:1 randomization. 52-week efficacy study.' }, evidenceText: 'N=779 ASCVD. LDL -17%. MACE exploratory.' }
     ],
-    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
+    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: [
+      { id: "nissen2023", author: "Nissen et al. (CLEAR)", year: 2023, journal: "NEJM", k: 1, n: 13970, estimates: { mace: { measure: "HR", value: 0.87, lo: 0.79, hi: 0.96 } } },
+      { id: "meta2024", author: "Bempedoic MA", year: 2024, journal: "Various", k: 6, n: 17844, estimates: { mace: { measure: "RR", value: 0.86, lo: 0.79, hi: 0.94 } } }
+    ]
   },
 
   /* ════════════════════════════════════════════════════════════════════
@@ -2585,7 +2588,9 @@ const CONFIG_LIBRARY = {
         outcomes: { mace: { tE: 29, tN: 364, cE: 52, cN: 367, hr: 0.62, hrLo: 0.41, hrHi: 0.95, src: 'Primary: CV death or WHF composite. HR 0.62.' } },
         rob: { domains: ['low','low','low','low','low'], overall: 'low', text: 'Double-blind, placebo-controlled. First dual GIP/GLP-1 RA in HFpEF.' }, evidenceText: 'N=731 HFpEF+obesity. Primary (CV death/WHF): HR 0.62 (0.41-0.95). Tirzepatide.' }
     ],
-    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
+    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: [
+      { id: "pooled2025", author: "Pooled STEP/SUMMIT", year: 2025, journal: "Various", k: 3, n: 1876, estimates: { mace: { measure: "HR", value: 0.69, lo: 0.53, hi: 0.90 } } }
+    ]
   },
 
   /* ════════════════════════════════════════════════════════════════════
@@ -2618,7 +2623,9 @@ const CONFIG_LIBRARY = {
         outcomes: { mace: { tE: 10, tN: 181, cE: 10, cN: 179, src: 'All-cause mortality. Eplontersen (antisense).' } },
         rob: { domains: ['low','low','some','low','low'], overall: 'some', text: 'Small trial. Short follow-up (12 mo).' }, evidenceText: 'N=360. Eplontersen: mortality 5.5% vs 5.6%. No mortality difference at 12 months.' }
     ],
-    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
+    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: [
+      { id: "sciencedirect2025", author: "ATTR-CM CV Outcomes MA", year: 2025, journal: "ScienceDirect", k: 4, n: 2067, estimates: { mace: { measure: "RR", value: 0.61, lo: 0.50, hi: 0.74 } } }
+    ]
   }
 ,
 
@@ -2828,7 +2835,10 @@ const CONFIG_LIBRARY = {
         evidenceText: "Cardiovascular Outco: N=8,246. See CT.gov for full results."
       },
     ],
-    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
+    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: [
+      { id: "zelniker2019", author: "Zelniker et al.", year: 2019, journal: "Lancet", k: 3, n: 34322, estimates: { mace: { measure: "HR", value: 0.89, lo: 0.83, hi: 0.96 } } },
+      { id: "smartc2024", author: "SMART-C (Circulation)", year: 2024, journal: "Circulation", k: 6, n: 57553, estimates: { mace: { measure: "HR", value: 0.90, lo: 0.85, hi: 0.95 } } }
+    ]
   },
 
   /* ============================================================ */
@@ -3875,7 +3885,9 @@ const CONFIG_LIBRARY = {
         evidenceText: "Study to Assess the: N=123. See CT.gov for full results."
       },
     ],
-    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
+    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: [
+      { id: "cochrane", author: "Cochrane VTE DOACs", year: 2020, journal: "Cochrane", k: 6, n: 27000, estimates: { mace: { measure: "RR", value: 0.88, lo: 0.74, hi: 1.05 } } }
+    ]
   },
 
   /* ============================================================ */
@@ -3946,7 +3958,9 @@ const CONFIG_LIBRARY = {
         evidenceText: "BOREAS: N=939. See CT.gov for full results."
       },
     ],
-    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: []
+    ghostProtocols: [], ongoingTrials: [], publishedBenchmarks: [
+      { id: "meta2019", author: "Dupilumab Exacerbation MA", year: 2019, journal: "Various", k: 4, n: 3000, estimates: { mace: { measure: "RR", value: 0.73, lo: 0.67, hi: 0.79 } } }
+    ]
   },
 
   /* ============================================================ */
