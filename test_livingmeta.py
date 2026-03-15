@@ -110,7 +110,43 @@ def run_tests():
         ok('postProcessTables fn', d.execute_script(
             'return typeof postProcessTables==="function"'))
 
-        # ─── 36: JS errors ───
+        # ─── 36-50: Transparency features ───
+        ok('highlightScreeningKeywords fn', d.execute_script(
+            'return typeof highlightScreeningKeywords==="function"'))
+        ok('highlights randomized green', d.execute_script(
+            'return highlightScreeningKeywords("A randomized trial",[]).includes("#dcfce7")'))
+        ok('highlights observational red', d.execute_script(
+            'return highlightScreeningKeywords("retrospective cohort",[]).includes("#fee2e2")'))
+        ok('autoAssessRoB fn', d.execute_script(
+            'return typeof autoAssessRoB==="function"'))
+        ok('RoB low for good trial', d.execute_script(
+            'return autoAssessRoB({allocation:"RANDOMIZED",masking:"DOUBLE",hasResults:true,'
+            'phase:"PHASE3",nPrimaryOutcomes:2}).overall==="low"'))
+        ok('RoB high for bad trial', d.execute_script(
+            'return autoAssessRoB({allocation:"NON_RANDOMIZED",masking:"NONE",hasResults:false,'
+            'phase:"PHASE1",nPrimaryOutcomes:0}).overall==="high"'))
+        ok('RoB has 5 domains', d.execute_script(
+            'return autoAssessRoB({allocation:"RANDOMIZED",masking:"SINGLE",hasResults:true,'
+            'phase:"PHASE3",nPrimaryOutcomes:1}).domains.length===5'))
+        ok('RoB has reasons', d.execute_script(
+            'return autoAssessRoB({allocation:"RANDOMIZED",masking:"SINGLE",hasResults:true,'
+            'phase:"PHASE3",nPrimaryOutcomes:1}).reasons.length===5'))
+        ok('fetchTrialResults fn', d.execute_script(
+            'return typeof fetchTrialResults==="function"'))
+        ok('renderTrialResultsPanel fn', d.execute_script(
+            'return typeof renderTrialResultsPanel==="function"'))
+        ok('GRADE evidence in table', d.execute_script(
+            'return document.getElementById("gradeSofTable")?.innerHTML?.includes("Evidence:")'))
+        ok('GRADE shows trial RoB', d.execute_script(
+            'return document.getElementById("gradeSofTable")?.innerHTML?.includes("COLCOT")'))
+        ok('GRADE shows I2', d.execute_script(
+            'return document.getElementById("gradeSofTable")?.innerHTML?.includes("I\\u00B2=")'))
+        ok('auto-gen configs marked', d.execute_script(
+            'return CONFIG_LIBRARY.sglt2_ckd._dataQuality==="auto-generated"'))
+        ok('curated configs not marked', d.execute_script(
+            'return CONFIG_LIBRARY.colchicine_cvd._dataQuality===undefined'))
+
+        # ─── 51: JS errors ───
         logs = d.get_log('browser')
         errors = [l for l in logs if l['level'] == 'SEVERE']
         ok('No JS errors', len(errors) == 0)
