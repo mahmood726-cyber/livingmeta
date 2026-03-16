@@ -238,6 +238,33 @@ def run_tests():
         ok('cooksDistanceArea container exists', d.execute_script(
             'return document.getElementById("cooksDistanceArea") !== null'))
 
+        # ─── 79-88: Round 3 features (forest download, sensitivity forest, RoB traffic light, heatmap, GRADE CSV) ───
+        ok('downloadForestPlot fn exists', d.execute_script(
+            'return typeof downloadForestPlot === "function"'))
+        ok('renderSensitivityForest fn exists', d.execute_script(
+            'return typeof renderSensitivityForest === "function"'))
+        ok('sensitivityForestPlot container exists', d.execute_script(
+            'return document.getElementById("sensitivityForestPlot") !== null'))
+        ok('renderRobTrafficLight fn exists', d.execute_script(
+            'return typeof renderRobTrafficLight === "function"'))
+        ok('robTrafficLightArea container exists', d.execute_script(
+            'return document.getElementById("robTrafficLightArea") !== null'))
+        ok('RoB traffic light renders for colchicine', d.execute_script('''
+            var area = document.getElementById("robTrafficLightArea");
+            return area !== null && area.innerHTML.includes("D1") && area.innerHTML.includes("D2");
+        '''))
+        ok('renderMultiOutcomeHeatmap fn exists', d.execute_script(
+            'return typeof renderMultiOutcomeHeatmap === "function"'))
+        ok('multiOutcomeHeatmap container exists', d.execute_script(
+            'return document.getElementById("multiOutcomeHeatmap") !== null'))
+        ok('exportGradeCSV fn exists', d.execute_script(
+            'return typeof exportGradeCSV === "function"'))
+        ok('computeDecisionRegret returns pBenefit', d.execute_script('''
+            var r = AppState.results;
+            if (!r || !r.decisionRegret) return false;
+            return r.decisionRegret.pBenefit >= 0 && r.decisionRegret.pBenefit <= 1;
+        '''))
+
         # ─── Final: JS errors ───
         logs = d.get_log('browser')
         errors = [l for l in logs if l['level'] == 'SEVERE']

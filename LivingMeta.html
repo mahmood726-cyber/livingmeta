@@ -1333,11 +1333,18 @@
   </div>
 
   <div class="section-header" style="margin-top: 24px;">Forest Plot</div>
+  <div style="display:flex;gap:8px;margin-bottom:8px;">
+    <button class="btn btn-outline" onclick="downloadForestPlot('svg')" style="font-size:0.75rem;">Download SVG</button>
+    <button class="btn btn-outline" onclick="downloadForestPlot('png')" style="font-size:0.75rem;">Download PNG</button>
+  </div>
   <div class="plot-container" id="forestPlotContainer">
     <div class="stub-area" style="border: none; min-height: 480px; display: flex; align-items: center; justify-content: center;">
       Run analysis to generate forest plot
     </div>
   </div>
+
+  <div class="section-header" style="margin-top:24px;">Sensitivity Forest (Multi-Method Comparison)</div>
+  <div id="sensitivityForestPlot" style="min-height:300px;"></div>
 
   <div class="section-header">Method Comparison &amp; Published Benchmarks</div>
   <div id="methodComparisonArea" class="stub-area">
@@ -1622,6 +1629,9 @@
 
   <div class="section-header" style="margin-top:24px;">CT.gov Evidence Delta (Registry/Publication Mismatch Audit)</div>
   <div id="evidenceDeltaArea" class="stub-area">Run synthesis first</div>
+
+  <div class="section-header" style="margin-top:24px;">Risk of Bias Traffic Light (Cochrane RoB 2 Style)</div>
+  <div id="robTrafficLightArea" class="stub-area">Run synthesis first to see RoB domain-level assessment across all trials.</div>
 </div>
 
 <!-- ─────────────────── GRADE TAB ─────────────────── -->
@@ -1643,6 +1653,13 @@
       Run synthesis first to generate methods text.
     </div>
   </div>
+
+  <div class="section-header" style="margin-top:24px;">Multi-Outcome Heatmap</div>
+  <div style="margin-bottom:8px;">
+    <button class="btn btn-primary" onclick="renderMultiOutcomeHeatmap()" style="font-size:0.8rem;">Generate Heatmap (All Outcomes)</button>
+    <button class="btn btn-outline" onclick="exportGradeCSV()" style="font-size:0.8rem;">Export GRADE SoF (CSV)</button>
+  </div>
+  <div id="multiOutcomeHeatmap" class="stub-area">Click "Generate Heatmap" to run synthesis across all outcomes and display a cross-outcome comparison.</div>
 
   <div class="section-header" style="margin-top:24px;">Decision Regret Analysis</div>
   <div id="decisionRegretArea" class="stub-area">Run synthesis first. Quantifies expected regret of acting vs waiting based on current evidence strength.</div>
@@ -4708,7 +4725,7 @@ function handleConfigChange(configId) {
   ['forestPlotContainer','funnelPlotContainer','galbraithPlot','baujatPlot','labbePlot',
    'goshPlot','doiPlot','tsaPlotContainer','predDistPlot','seqBayesPlot','cdCurvePlot',
    'subgroupForestPlot','bayesPosteriorPlot','nntCurvePlot','metaRegPlot',
-   'nmaNetworkPlot','evidenceTimelinePlot','evidenceVelocityPlot','cooksDistancePlot'
+   'nmaNetworkPlot','evidenceTimelinePlot','evidenceVelocityPlot','cooksDistancePlot','sensitivityForestPlot'
   ].forEach(function(id) { var el = document.getElementById(id); if (el) { try { Plotly.purge(el); } catch(e) {} } });
   /* Clear stale result panels */
   ['synthesisResultsArea','trackAResults','trackBResults','gradeSofTable',
@@ -7998,6 +8015,13 @@ function runSynthesis() {
   // Classifier metrics (screening audit)
   const cmResult = computeClassifierMetrics(config);
   renderClassifierMetrics(cmResult);
+  // Store round 2+3 results
+  Object.assign(AppState.results, { threeLevelMA: threeLevelResult, evidenceVelocity: evVelocity,
+    decisionRegret: drResult, cooksDistance: cdResult, classifierMetrics: cmResult });
+  // Sensitivity forest (multi-method comparison)
+  renderSensitivityForest(AppState.results);
+  // RoB traffic light
+  renderRobTrafficLight(config);
 
   /* Post-process tables for a11y + mobile */
   postProcessTables();
@@ -13912,6 +13936,236 @@ function renderMetaRegression(reg) {
   }
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE U: FOREST PLOT DOWNLOAD (SVG/PNG)
+   ═══════════════════════════════════════════════════════════════════ */
+
+function downloadForestPlot(format) {
+  const plotDiv = document.getElementById('forestPlotContainer');
+  if (!plotDiv) { showToast('No forest plot to download.'); return; }
+  const plotlyDiv = plotDiv.querySelector('.js-plotly-plot');
+  if (!plotlyDiv) { showToast('Run synthesis first to generate forest plot.'); return; }
+  const config = getConfig();
+  const fname = 'LivingMeta_Forest_' + (config.id ?? 'plot') + '_' + new Date().toISOString().slice(0, 10);
+  if (format === 'svg') {
+    Plotly.downloadImage(plotlyDiv, { format: 'svg', filename: fname, width: 1200, height: 700 });
+  } else {
+    Plotly.downloadImage(plotlyDiv, { format: 'png', filename: fname, width: 1200, height: 700, scale: 2 });
+  }
+  showToast('Forest plot downloaded as ' + format.toUpperCase() + '.');
+  logAudit('export_forest_plot', { format });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE V: SENSITIVITY FOREST (Multi-Method Diamond Plot)
+   Shows DL/REML/PM/FE/MH/Peto pooled estimates overlaid.
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderSensitivityForest(results) {
+  const plotDiv = document.getElementById('sensitivityForestPlot');
+  if (!plotDiv) return;
+  if (!results || (!results.trackA && !results.trackB)) {
+    plotDiv.innerHTML = '<div class="stub-area" style="border:none;">Run synthesis first</div>';
+    return;
+  }
+  const track = results.trackB ?? results.trackA;
+  if (!track || !track.tau2All) { Plotly.purge(plotDiv); return; }
+
+  const isDark = document.body.classList.contains('dark-mode');
+  const measure = track.measure ?? 'OR';
+  const methods = [];
+
+  /* Random-effects methods */
+  for (const [name, tau2Res] of Object.entries(track.tau2All)) {
+    if (tau2Res == null || tau2Res.tau2 == null) continue;
+    try {
+      const pe = PooledEstimate(track.yi, track.vi, tau2Res.tau2, { hksj: false, confLevel: 0.95, method: name });
+      if (pe && isFinite(pe.estimate)) methods.push({ name: name + ' (RE)', est: Math.exp(pe.estimate), ciLo: Math.exp(pe.ci[0]), ciHi: Math.exp(pe.ci[1]), color: '#3b82f6' });
+    } catch(e) { /* skip failed estimator */ }
+  }
+  /* HKSJ */
+  try {
+    const hksjTau2 = (track.tau2All?.REML ?? track.tau2All?.DL)?.tau2 ?? 0;
+    const peHKSJ = PooledEstimate(track.yi, track.vi, hksjTau2, { hksj: true, confLevel: 0.95, method: 'HKSJ' });
+    if (peHKSJ && isFinite(peHKSJ.estimate)) methods.push({ name: 'REML+HKSJ', est: Math.exp(peHKSJ.estimate), ciLo: Math.exp(peHKSJ.ci[0]), ciHi: Math.exp(peHKSJ.ci[1]), color: '#7c3aed' });
+  } catch(e) {}
+  /* Fixed-effect */
+  if (track.fixed && isFinite(track.fixed.estimate)) methods.push({ name: 'FE (IV)', est: Math.exp(track.fixed.estimate), ciLo: Math.exp(track.fixed.ci[0]), ciHi: Math.exp(track.fixed.ci[1]), color: '#059669' });
+  if (track.mhOR && track.mhOR.or != null) methods.push({ name: 'MH OR', est: track.mhOR.or, ciLo: track.mhOR.ciLo, ciHi: track.mhOR.ciHi, color: '#d97706' });
+  if (track.petoOR && track.petoOR.or != null) methods.push({ name: 'Peto OR', est: track.petoOR.or, ciLo: track.petoOR.ciLo, ciHi: track.petoOR.ciHi, color: '#dc2626' });
+
+  if (methods.length === 0) { Plotly.purge(plotDiv); return; }
+  const labels = methods.map(m => m.name);
+  const ests = methods.map(m => m.est);
+  const ciLos = methods.map(m => m.ciLo);
+  const ciHis = methods.map(m => m.ciHi);
+  const colors = methods.map(m => m.color);
+
+  Plotly.purge(plotDiv);
+  Plotly.newPlot(plotDiv, [{
+    x: ests, y: labels, type: 'scatter', mode: 'markers',
+    marker: { size: 14, symbol: 'diamond', color: colors },
+    error_x: { type: 'data', symmetric: false, array: ciHis.map((h, i) => h - ests[i]), arrayminus: ests.map((e, i) => e - ciLos[i]), thickness: 2, color: colors },
+    hovertext: methods.map(m => m.name + ': ' + (m.est ?? 0).toFixed(3) + ' (' + (m.ciLo ?? 0).toFixed(3) + '\u2013' + (m.ciHi ?? 0).toFixed(3) + ')'),
+    hoverinfo: 'text', showlegend: false
+  }, {
+    x: [1, 1], y: [labels[0], labels[labels.length - 1]], mode: 'lines', name: 'No effect',
+    line: { color: isDark ? '#475569' : '#cbd5e1', dash: 'dash', width: 1.5 }, showlegend: false
+  }], {
+    title: { text: 'Sensitivity Forest: Pooled ' + measure + ' by Method', font: { size: 14 } },
+    xaxis: { title: measure, type: 'log', gridcolor: isDark ? '#334155' : '#e2e8f0' },
+    yaxis: { automargin: true },
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: isDark ? '#e2e8f0' : '#1e293b' },
+    margin: { t: 40, b: 50, l: 120, r: 20 }
+  }, { responsive: true });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE W: RISK OF BIAS TRAFFIC LIGHT (Cochrane RoB 2)
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderRobTrafficLight(config) {
+  const area = document.getElementById('robTrafficLightArea');
+  if (!area) return;
+  if (!config || !config.trials) { area.innerHTML = '<span style="opacity:0.6;">No trial data</span>'; return; }
+
+  const domainLabels = ['Randomization', 'Deviations', 'Missing Data', 'Measurement', 'Selection'];
+  const domainShort = ['D1', 'D2', 'D3', 'D4', 'D5'];
+  const colorMap = { low: '#16a34a', some: '#d97706', high: '#dc2626', unclear: '#64748b' };
+  const symbolMap = { low: '+', some: '?', high: '\u2212', unclear: '?' };
+
+  let html = '<table style="width:100%;font-size:0.78rem;border-collapse:collapse;">';
+  html += '<thead><tr><th style="text-align:left;padding:6px;">Study</th>';
+  for (let d = 0; d < 5; d++) {
+    html += '<th style="text-align:center;padding:6px;font-size:0.7rem;" title="' + domainLabels[d] + '">' + domainShort[d] + '</th>';
+  }
+  html += '<th style="text-align:center;padding:6px;">Overall</th></tr></thead><tbody>';
+
+  for (const trial of config.trials) {
+    const rob = trial.rob;
+    html += '<tr><td style="padding:6px;font-weight:600;">' + escapeHtml(trial.id) + '</td>';
+    if (rob && rob.domains && rob.domains.length >= 5) {
+      for (let d = 0; d < 5; d++) {
+        const level = (rob.domains[d] ?? 'unclear').toLowerCase();
+        const key = level.includes('low') ? 'low' : level.includes('high') ? 'high' : level.includes('some') ? 'some' : 'unclear';
+        html += '<td style="text-align:center;padding:6px;"><span style="display:inline-block;width:24px;height:24px;border-radius:50%;background:' + colorMap[key] + ';color:white;font-weight:700;line-height:24px;text-align:center;font-size:0.75rem;" title="' + escapeHtml(level) + '" aria-label="' + domainLabels[d] + ': ' + key + '">' + symbolMap[key] + '</span></td>';
+      }
+      const overall = (rob.overall ?? 'unclear').toLowerCase();
+      const oKey = overall.includes('low') ? 'low' : overall.includes('high') ? 'high' : overall.includes('some') ? 'some' : 'unclear';
+      html += '<td style="text-align:center;padding:6px;"><span style="display:inline-block;width:24px;height:24px;border-radius:50%;background:' + colorMap[oKey] + ';color:white;font-weight:700;line-height:24px;text-align:center;font-size:0.75rem;" aria-label="Overall: ' + oKey + '">' + symbolMap[oKey] + '</span></td>';
+    } else {
+      for (let d = 0; d < 6; d++) html += '<td style="text-align:center;padding:6px;"><span style="display:inline-block;width:24px;height:24px;border-radius:50%;background:#64748b;color:white;line-height:24px;text-align:center;font-size:0.75rem;" aria-label="Not assessed">?</span></td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  html += '<div style="display:flex;gap:12px;margin-top:8px;font-size:0.72rem;flex-wrap:wrap;">';
+  html += '<span><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#16a34a;vertical-align:middle;"></span> Low risk (+)</span>';
+  html += '<span><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#d97706;vertical-align:middle;"></span> Some concerns (?)</span>';
+  html += '<span><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#dc2626;vertical-align:middle;"></span> High risk (\u2212)</span>';
+  html += '<span><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#64748b;vertical-align:middle;"></span> Not assessed (?)</span>';
+  html += '</div>';
+  html += '<div style="font-size:0.7rem;opacity:0.5;margin-top:4px;">Domains: D1=Randomization, D2=Deviations from intended interventions, D3=Missing outcome data, D4=Measurement of outcome, D5=Selection of reported result</div>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE X: MULTI-OUTCOME HEATMAP
+   Runs synthesis across all outcomes, displays comparison grid.
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderMultiOutcomeHeatmap() {
+  const area = document.getElementById('multiOutcomeHeatmap');
+  if (!area) return;
+  const config = getConfig();
+  if (!config) { area.innerHTML = '<span style="opacity:0.6;">No config loaded</span>'; return; }
+
+  /* Collect all unique outcome keys */
+  const outcomeKeys = new Set();
+  for (const t of config.trials) {
+    for (const ok of Object.keys(t.outcomes ?? {})) outcomeKeys.add(ok);
+  }
+  if (outcomeKeys.size === 0) { area.innerHTML = '<span style="opacity:0.6;">No outcomes found</span>'; return; }
+
+  /* Run synthesis for each outcome */
+  const outcomes = [];
+  for (const ok of outcomeKeys) {
+    const trackA = synthesizeTrackA(config.trials, ok);
+    const trackB = synthesizeTrackB(config.trials, ok);
+    const track = trackB ?? trackA;
+    if (!track) continue;
+    const grade = assessGRADE(ok, track, track.bias);
+    const or = Math.exp(track.primary.estimate);
+    const ciLo = Math.exp(track.primary.ci[0]);
+    const ciHi = Math.exp(track.primary.ci[1]);
+    const sig = ciHi < 1.0 || ciLo > 1.0;
+    outcomes.push({
+      key: ok, measure: track.measure, k: track.k,
+      effect: or, ciLo, ciHi, I2: track.primary.I2, tau2: track.primary.tau2 ?? 0,
+      pval: track.primary.pval, grade: grade?.overall ?? 'N/A', sig
+    });
+  }
+
+  if (outcomes.length === 0) { area.innerHTML = '<span style="opacity:0.6;">No poolable outcomes found</span>'; return; }
+
+  /* Store for CSV export */
+  AppState._multiOutcomeData = outcomes;
+
+  /* Render heatmap table */
+  let html = '<table style="width:100%;font-size:0.78rem;border-collapse:collapse;">';
+  html += '<thead><tr><th style="text-align:left;padding:6px;">Outcome</th><th>k</th><th>Effect</th><th>' + (AppState.settings?.confLevel ?? 0.95) * 100 + '% CI</th><th>I\u00B2</th><th>\u03C4\u00B2</th><th>p</th><th>GRADE</th><th>Sig</th></tr></thead><tbody>';
+
+  for (const o of outcomes) {
+    const effColor = o.sig ? (o.effect < 1 ? '#16a34a' : '#dc2626') : 'inherit';
+    const gradeColors = { HIGH: '#16a34a', MODERATE: '#d97706', LOW: '#ea580c', 'VERY LOW': '#dc2626' };
+    const gc = gradeColors[o.grade] ?? '#64748b';
+    html += '<tr>';
+    html += '<td style="padding:6px;font-weight:600;">' + escapeHtml(o.key.toUpperCase()) + '</td>';
+    html += '<td style="text-align:center;">' + o.k + '</td>';
+    html += '<td style="text-align:center;font-weight:700;color:' + effColor + ';">' + o.effect.toFixed(3) + '</td>';
+    html += '<td style="text-align:center;">' + o.ciLo.toFixed(3) + ' \u2013 ' + o.ciHi.toFixed(3) + '</td>';
+    html += '<td style="text-align:center;">' + o.I2.toFixed(0) + '%</td>';
+    html += '<td style="text-align:center;">' + o.tau2.toFixed(4) + '</td>';
+    html += '<td style="text-align:center;">' + (o.pval != null ? (o.pval < 0.001 ? '<0.001' : o.pval.toFixed(3)) : 'N/A') + '</td>';
+    html += '<td style="text-align:center;color:' + gc + ';font-weight:600;">' + escapeHtml(o.grade) + '</td>';
+    html += '<td style="text-align:center;">' + (o.sig ? '\u2714' : '\u2014') + '</td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  html += '<div style="font-size:0.72rem;opacity:0.5;margin-top:6px;">Synthesized ' + outcomes.length + ' outcomes using ' + (AppState.settings?.tau2Method ?? 'DL') + ' estimator.</div>';
+  area.innerHTML = html;
+  showToast('Multi-outcome heatmap: ' + outcomes.length + ' outcomes synthesized.');
+  logAudit('multi_outcome_heatmap', { k: outcomes.length });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE Y: GRADE SoF CSV EXPORT
+   ═══════════════════════════════════════════════════════════════════ */
+
+function exportGradeCSV() {
+  const outcomes = AppState._multiOutcomeData;
+  if (!outcomes || outcomes.length === 0) {
+    showToast('Generate the multi-outcome heatmap first.');
+    return;
+  }
+  const config = getConfig();
+  let csv = 'Outcome,k,Measure,Effect,CI_Lower,CI_Upper,I2_pct,Tau2,P_value,GRADE,Significant\n';
+  for (const o of outcomes) {
+    csv += [o.key, o.k, o.measure, o.effect.toFixed(4), o.ciLo.toFixed(4), o.ciHi.toFixed(4),
+      o.I2.toFixed(1), o.tau2.toFixed(4), o.pval != null ? o.pval.toFixed(4) : 'NA',
+      o.grade, o.sig ? 'Yes' : 'No'].join(',') + '\n';
+  }
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'LivingMeta_GRADE_SoF_' + (config.id ?? 'export') + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('GRADE SoF CSV exported (' + outcomes.length + ' outcomes).');
+  logAudit('export_grade_csv', { k: outcomes.length });
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    FEATURE P: THREE-LEVEL META-ANALYSIS (Konstantopoulos 2011)
