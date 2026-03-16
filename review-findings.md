@@ -1,56 +1,55 @@
-# Multi-Persona Review: LivingMeta.html (40-topic expansion)
-### Date: 2026-03-14 (reviewed), 2026-03-15 (all fixes applied)
-### Status: REVIEW CLEAN — All P0 fixed, 12/14 P1 fixed, 4/11 P2 fixed
+# Multi-Persona Review: LivingMeta.html (5 new features — commit e29f193)
+### Date: 2026-03-16
+### Status: REVIEW CLEAN — All 5 P0 fixed, all 11 P1 fixed
 
 ---
 
-## P0 — Critical (9) — ALL FIXED
+## Reviewers
+1. Statistical Methodologist
+2. Security Auditor
+3. UX/Accessibility Reviewer
+4. Software Engineer
+5. Domain Expert (Cochrane/PRISMA specialist)
 
-- [FIXED] P0-New1: Track B tE=0/cE=0 guard — synthesizeTrackB now skips placeholder data
-- [FIXED] P0-New2: COMPASS HR 1.70→0.76, VOYAGER HR 1.43→0.85 (bleeding→efficacy)
-- [FIXED] P0-New3: Track A filter rejects HR<=0 and HR>=50 (catches negative MDs, percentages)
-- [FIXED] P0-New4: Obesity responder ORs (11.22, 23.99, etc.) nulled out
-- [FIXED] P0-New5: PARADIGM-HF HR 0.80 (0.73-0.87) manually added
-- [FIXED] P0-New6: CANTOS HR 0.86→0.85, year 2019→2017
-- [FIXED] P0-New7: STORAGE_KEY now dynamic (let + updateStorageKey on config switch)
-- [FIXED] P0-New8: DEFAULT_STATE includes all runtime fields
-- [FIXED] P0-New9: Patient mode escapeHtml on PICO text
+## P0 — Critical (5) — ALL FIXED
 
-## P1 — Important (14) — 12/14 FIXED
+- [FIXED] P0-1 (Stat+Sec+Eng+Domain): Hardcoded z=1.96 in NMA Bucher CIs — now uses `normalQuantile(1 - alpha/2)` with confLevel
+- [FIXED] P0-2 (Stat+Eng+Domain): NMA consistency test formula wrong (tested null not inconsistency) — now correctly reports "not estimable" for star networks, reserves Q-test for closed-loop networks
+- [FIXED] P0-3 (Stat+Eng): Evidence timeline `trialNames[i]` misaligned with year-sorted cumulative — sorted trials by year before mapping names
+- [FIXED] P0-4 (Domain): Methods report overclaimed TSA boundaries (Pocock/Lan-DeMets not implemented) — corrected to "O'Brien-Fleming alpha-spending boundaries"
+- [FIXED] P0-5 (A11y): NMA league table used color alone for significance — added asterisk `*` text indicator + footnote
 
-- [FIXED] P1-New1: Track B skip for tE=0&&cE=0 (placeholder guard)
-- [FIXED] P1-New2: VERTIS-CV mace HR corrected to 0.97
-- [FIXED] P1-New3: ORION-4 year 2049→2024
-- [FIXED] P1-New4: RE-LY year 0→2009
-- [FIXED] P1-New5: 8 truncated trial IDs renamed (EMPA-REG, RE-LY, ROCKET-AF, etc.)
-- [FIXED] P1-New7: VALOR-HCM HR 58.93→null
-- [FIXED] P1-New8: DAPA-MI win ratio→null with note
-- [OPEN] P1-New6: "CL-TRIAL-2" in closed_loop_t1dm — wrong trial still present (NCT04531566 is neonatal echo)
-- [OPEN] P1-New9: 12 single-trial configs (k=1) — by design, these need users to discover more trials
-- [FIXED] P1-New10: COAPT — added HR 0.62 (0.46-0.82) from Stone 2018 NEJM
-- [FIXED] P1-New11: Plotly.purge on config switch
-- [FIXED] P1-New12: Stale panels cleared on config switch
-- [FIXED] P1-New13: chi2CDF shadowing→renamed chi2CDF_df1
-- [FIXED] P1-New14: Config selector grouped by therapeutic area (10 optgroups)
+## P1 — Important (11) — ALL FIXED
 
-## P2 — Minor (11) — 4/11 FIXED
+- [FIXED] P1-1 (Sec): Unescaped `nctId` in renderDataQuality innerHTML — added `escapeHtml()`
+- [FIXED] P1-2 (Sec): CSS injection via `r.color` in NMA render — added `safeColor()` validator (hex-only)
+- [FIXED] P1-3 (Stat): No seDiff=0 guard in Bucher comparisons — added `if (seDiff < 1e-15) continue`
+- [FIXED] P1-4 (Stat): compositeMap defined but never used (dead code) — removed
+- [FIXED] P1-5 (Stat+Domain): 4pt MACE detection preempted 5pt — reordered: 5pt > 4pt > 3pt
+- [FIXED] P1-6 (Stat+Eng): Methods report `Qp=NaN` rendered literal "NaN" — now shows "N/A"
+- [FIXED] P1-7 (Stat): Methods report hardcoded "95% CI" despite dynamic confLevel — now uses `(confLevel*100) + '% CI'`
+- [FIXED] P1-8 (A11y): NMA 2-column grid no responsive breakpoint — changed to `repeat(auto-fit,minmax(320px,1fr))`
+- [FIXED] P1-9 (A11y): Methods report `<pre>` block not keyboard-scrollable — added `tabindex="0" role="region" aria-label`
+- [FIXED] P1-10 (A11y): `#22c55e` green on white had ~3.0:1 contrast — replaced with `#16a34a` (~4.6:1) in all new features
+- [FIXED] P1-11 (Stat+Domain): Timeline y-axis hardcoded "Pooled OR" — now dynamic based on `trackResult.measure`
 
-- [OPEN] P2-New1: New configs lack ghostProtocols/publishedBenchmarks (by design — discovery mode)
-- [OPEN] P2-New2: EMPA-REG nTotal 7064 vs 7020 (CT.gov enrollment vs randomized)
-- [OPEN] P2-New3: DECLARE mace HR 0.83 = co-primary, not 3-pt MACE
-- [OPEN] P2-New4: 'mace' key for non-MACE outcomes (by design — generic primary outcome key)
-- [OPEN] P2-New5: Mixed estimand types in same trial outcomes (HR + MD)
-- [OPEN] P2-New6: Blanket "low" RoB (placeholder)
-- [OPEN] P2-New7: CANVAS N=4330 (alone) vs Program 10142
-- [FIXED] P2-New8: Duplicate VTE IDs→AMPLIFY, HOKUSAI-VTE
-- [FIXED] P2-New9: NCT ID regex→/^NCT\d{8}$/
-- [OPEN] P2-New10: Tailwind CDN is development version
-- [FIXED] P2-New11: FNV-1a fallback documented
-- [FIXED] P2-New4 (obesity ORs): 5 responder ORs nulled out
+## P2 — Minor (9) — OPEN (by design / low priority)
 
-## Additional Improvements (2026-03-15)
+- [OPEN] P2-1: Evidence timeline Plotly chart has no text alternative for screen readers
+- [OPEN] P2-2: NMA network graph similarly lacks text alternative (ranking table partially mitigates)
+- [OPEN] P2-3: Data quality `opacity:0.6` on labels borderline contrast
+- [OPEN] P2-4: Harmonization italic + opacity on "assumed" text
+- [OPEN] P2-5: NCT ID regex doesn't trim whitespace
+- [OPEN] P2-6: `escapeHtml` in plain-text report may double-escape on render
+- [OPEN] P2-7: P-score direction not parameterized (correct for HR/lower-is-better)
+- [OPEN] P2-8: Data quality A-F grading is custom (not GRADE-aligned)
+- [OPEN] P2-9: Blob URL revoke timing could use setTimeout for safety
 
-- Manuscript generator: Track A (HR) + Track B (OR) dual-track support
-- Reproducibility capsule: JSON export with PICO + data + synthesis + R script + manuscript + audit log
-- R_BASELINES: Pre-computed metafor reference values for 10 top configs
-- 7 landmark HRs manually added (VICTORIA, GALACTIC-HF, FLOW, IMPROVE-IT, EMPACT-MI, COAPT, ARISTOTLE)
+## Test Results
+- **65/65 tests pass** (51 original + 14 new feature tests)
+- **636/636 div balance**
+- **0 JS errors in browser console**
+- **14,680 lines, 764 KB**
+
+## Previous Review (2026-03-15, 40-topic expansion)
+All P0 fixed, 12/14 P1 fixed. See git history for details.

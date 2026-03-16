@@ -1512,7 +1512,7 @@
     <div id="nmaResultsArea" class="stub-area">
       NMA requires a config with 3+ drug classes (e.g., ATTR-CM). Run synthesis first.
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:12px;">
       <div id="nmaNetworkPlot" style="min-height:350px;"></div>
       <div id="nmaLeagueTable"></div>
     </div>
@@ -13889,6 +13889,8 @@ function renderMetaRegression(reg) {
    league table, P-scores (frequentist SUCRA analogue), and consistency test.
    ═══════════════════════════════════════════════════════════════════ */
 
+function safeColor(c) { return /^#[0-9a-fA-F]{3,6}$/.test(c) ? c : '#3b82f6'; }
+
 function computeNMA(trackResult, config) {
   if (!trackResult || !config.subgroups?.drugClass) return null;
   const sg = config.subgroups.drugClass;
@@ -13922,6 +13924,8 @@ function computeNMA(trackResult, config) {
   /* Pairwise indirect comparisons via Bucher method:
      A vs B = (A vs Control) - (B vs Control)
      Var(A vs B) = Var(A vs C) + Var(B vs C) */
+  const confLevel = AppState.settings?.confLevel ?? 0.95;
+  const zCrit = normalQuantile(1 - (1 - confLevel) / 2);
   const comparisons = [];
   for (let i = 0; i < estKeys.length; i++) {
     for (let j = i + 1; j < estKeys.length; j++) {
@@ -13929,10 +13933,11 @@ function computeNMA(trackResult, config) {
       const diff = a.pooled.estimate - b.pooled.estimate;
       const varDiff = a.pooled.se * a.pooled.se + b.pooled.se * b.pooled.se;
       const seDiff = Math.sqrt(varDiff);
+      if (seDiff < 1e-15) continue; /* guard against division by zero */
       const z = diff / seDiff;
       const p = 2 * (1 - normalCDF(Math.abs(z)));
-      const ciLo = diff - 1.96 * seDiff;
-      const ciHi = diff + 1.96 * seDiff;
+      const ciLo = diff - zCrit * seDiff;
+      const ciHi = diff + zCrit * seDiff;
       comparisons.push({
         a: estKeys[i], aLabel: a.label, aColor: a.color,
         b: estKeys[j], bLabel: b.label, bColor: b.color,
@@ -13956,14 +13961,21 @@ function computeNMA(trackResult, config) {
   /* Rank by P-score */
   const ranking = Object.entries(pScores).sort((a, b) => b[1].score - a[1].score).map(([key, val], idx) => ({ rank: idx + 1, key, ...val }));
 
-  /* Consistency check: Q_inconsistency (simple global test) */
-  let Qincon = 0, dfIncon = 0;
-  for (const comp of comparisons) {
-    Qincon += (comp.logEffect * comp.logEffect) / (comp.se * comp.se);
-    dfIncon++;
+  /* Consistency check: In a star network (all vs common comparator), all indirect
+     comparisons are fully determined — no closed loops exist, so classical inconsistency
+     (design-by-treatment interaction) is not estimable. We report this honestly.
+     For networks with closed loops (future), use node-splitting or design-by-treatment test. */
+  const nIndependent = estKeys.length - 1; /* independent direct comparisons vs control */
+  const nPairwise = comparisons.length; /* C(n,2) indirect comparisons */
+  const dfIncon = nPairwise - nIndependent; /* df for inconsistency = 0 for star networks */
+  let Qincon = 0;
+  if (dfIncon > 0) {
+    /* Only compute Q if there are actually closed loops (non-star network) */
+    for (const comp of comparisons) {
+      Qincon += (comp.logEffect * comp.logEffect) / (comp.se * comp.se);
+    }
   }
-  dfIncon = Math.max(0, dfIncon - (estKeys.length - 1));
-  const pIncon = dfIncon > 0 ? (1 - chi2CDF(Qincon, dfIncon)) : 1;
+  const pIncon = dfIncon > 0 ? (1 - chi2CDF(Qincon, dfIncon)) : null; /* null = not estimable */
 
   /* Network edges (for graph) */
   const edges = [];
@@ -13997,9 +14009,9 @@ function renderNMA(nma) {
     const or = est ? Math.exp(est.pooled.estimate).toFixed(3) : 'N/A';
     const barWidth = Math.round(r.score * 100);
     html += '<tr><td style="padding:6px;font-weight:700;">#' + r.rank + '</td>';
-    html += '<td><span style="color:' + (r.color ?? '#3b82f6') + ';">\u25CF</span> ' + escapeHtml(r.label) + '</td>';
+    html += '<td><span style="color:' + safeColor(r.color) + ';">\u25CF</span> ' + escapeHtml(r.label) + '</td>';
     html += '<td style="text-align:center;"><div style="display:flex;align-items:center;gap:4px;justify-content:center;">';
-    html += '<div style="width:60px;height:8px;background:var(--border-color);border-radius:4px;overflow:hidden;"><div style="width:' + barWidth + '%;height:100%;background:' + (r.color ?? '#3b82f6') + ';border-radius:4px;"></div></div>';
+    html += '<div style="width:60px;height:8px;background:var(--border-color);border-radius:4px;overflow:hidden;"><div style="width:' + barWidth + '%;height:100%;background:' + safeColor(r.color) + ';border-radius:4px;"></div></div>';
     html += '<span style="font-weight:600;">' + r.score.toFixed(2) + '</span></div></td>';
     html += '<td style="text-align:center;">' + r.k + '</td>';
     html += '<td style="text-align:center;font-weight:600;">' + or + '</td></tr>';
@@ -14007,10 +14019,16 @@ function renderNMA(nma) {
   html += '</tbody></table>';
 
   /* Consistency test */
-  const conColor = nma.consistency.p < 0.05 ? '#ef4444' : '#22c55e';
-  html += '<div style="font-size:0.82rem;padding:8px;background:var(--bg-card);border-radius:6px;border-left:3px solid ' + conColor + ';">';
-  html += '<strong>Global Consistency:</strong> Q = ' + nma.consistency.Q.toFixed(2) + ', df = ' + nma.consistency.df + ', p = ' + (nma.consistency.p < 0.001 ? '<0.001' : nma.consistency.p.toFixed(3));
-  html += ' <span style="color:' + conColor + ';font-weight:600;">' + (nma.consistency.p < 0.05 ? 'Inconsistency detected' : 'Consistent') + '</span></div>';
+  if (nma.consistency.p === null) {
+    html += '<div style="font-size:0.82rem;padding:8px;background:var(--bg-card);border-radius:6px;border-left:3px solid var(--accent);">';
+    html += '<strong>Consistency:</strong> Not estimable (star network — all comparisons are indirect via common control, no closed loops). ';
+    html += 'Design-by-treatment interaction test requires direct head-to-head evidence.</div>';
+  } else {
+    const conColor = nma.consistency.p < 0.05 ? '#ef4444' : '#16a34a';
+    html += '<div style="font-size:0.82rem;padding:8px;background:var(--bg-card);border-radius:6px;border-left:3px solid ' + conColor + ';">';
+    html += '<strong>Global Consistency:</strong> Q = ' + nma.consistency.Q.toFixed(2) + ', df = ' + nma.consistency.df + ', p = ' + (nma.consistency.p < 0.001 ? '<0.001' : nma.consistency.p.toFixed(3));
+    html += ' <span style="color:' + conColor + ';font-weight:600;">' + (nma.consistency.p < 0.05 ? 'Inconsistency detected' : 'Consistent') + '</span></div>';
+  }
   area.innerHTML = html;
 
   /* League table (lower triangle) */
@@ -14031,12 +14049,14 @@ function renderNMA(nma) {
         const eff = isReversed ? (1 / comp.effect) : comp.effect;
         const lo = isReversed ? (1 / comp.ciHi) : comp.ciLo;
         const hi = isReversed ? (1 / comp.ciLo) : comp.ciHi;
-        const sigColor = comp.p < 0.05 ? '#059669' : 'inherit';
-        lt += '<td style="padding:4px;text-align:center;color:' + sigColor + ';font-size:0.7rem;">' + eff.toFixed(2) + '<br>(' + lo.toFixed(2) + '\u2013' + hi.toFixed(2) + ')</td>';
+        const isSig = comp.p < 0.05;
+        const sigColor = isSig ? '#059669' : 'inherit';
+        lt += '<td style="padding:4px;text-align:center;color:' + sigColor + ';font-size:0.75rem;">' + eff.toFixed(2) + (isSig ? '*' : '') + '<br>(' + lo.toFixed(2) + '\u2013' + hi.toFixed(2) + ')</td>';
       }
       lt += '</tr>';
     }
     lt += '</tbody></table>';
+    lt += '<div style="font-size:0.7rem;opacity:0.6;margin-top:4px;">* p &lt; 0.05 (statistically significant)</div>';
     leagueDiv.innerHTML = lt;
   }
 
@@ -14065,7 +14085,7 @@ function renderNMA(nma) {
 
     const nodeTrace = {
       x: nodeX, y: nodeY, mode: 'markers+text', type: 'scatter',
-      marker: { size: nodes.map(nd => Math.max(16, nd.k * 12)), color: nodes.map(nd => nd.color ?? '#3b82f6'), opacity: 0.85 },
+      marker: { size: nodes.map(nd => Math.max(16, nd.k * 12)), color: nodes.map(nd => safeColor(nd.color)), opacity: 0.85 },
       text: nodes.map(nd => nd.label + ' (k=' + nd.k + ')'), textposition: 'top center',
       textfont: { size: 11, color: isDark ? '#e2e8f0' : '#1e293b' },
       hoverinfo: 'text', showlegend: false
@@ -14103,7 +14123,10 @@ function renderEvidenceTimeline(trackResult) {
   const ciLo = cum.map(c => Math.exp(c.ci[0]));
   const ciHi = cum.map(c => Math.exp(c.ci[1]));
   const ks = cum.map(c => c.k);
-  const trialNames = (trackResult.trials ?? []).map(t => t.name + ' (' + t.year + ')');
+  const measureLabel = trackResult.measure ?? 'OR';
+  /* Sort trial names by year to match cumulative order */
+  const sortedTrials = (trackResult.trials ?? []).slice().sort((a, b) => (a.year ?? 0) - (b.year ?? 0));
+  const trialNames = sortedTrials.map(t => t.name + ' (' + t.year + ')');
 
   /* Cumulative pooled effect with CI ribbon */
   const traces = [
@@ -14112,7 +14135,7 @@ function renderEvidenceTimeline(trackResult) {
     { x: years, y: pooledOR, mode: 'lines+markers', name: 'Pooled Effect',
       line: { color: '#3b82f6', width: 3 },
       marker: { size: ks.map(k => Math.max(6, k * 3)), color: '#3b82f6' },
-      text: cum.map((c, i) => 'k=' + c.k + ' | OR=' + Math.exp(c.estimate).toFixed(3) + (trialNames[i] ? '<br>Added: ' + trialNames[i] : '')),
+      text: cum.map((c, i) => 'k=' + c.k + ' | ' + measureLabel + '=' + Math.exp(c.estimate).toFixed(3) + (trialNames[i] ? '<br>Added: ' + trialNames[i] : '')),
       hoverinfo: 'text+x'
     },
     { x: [years[0], years[years.length - 1]], y: [1, 1], mode: 'lines', name: 'No effect',
@@ -14137,7 +14160,7 @@ function renderEvidenceTimeline(trackResult) {
   Plotly.newPlot(plotDiv, traces, {
     title: { text: 'Evidence Accrual Timeline — Living Meta-Analysis', font: { size: 14 } },
     xaxis: { title: 'Year', gridcolor: isDark ? '#334155' : '#e2e8f0', dtick: 1 },
-    yaxis: { title: 'Pooled OR (95% CI)', gridcolor: isDark ? '#334155' : '#e2e8f0', type: 'log' },
+    yaxis: { title: 'Pooled ' + measureLabel + ' (95% CI)', gridcolor: isDark ? '#334155' : '#e2e8f0', type: 'log' },
     paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
     font: { color: isDark ? '#e2e8f0' : '#1e293b' },
     legend: { x: 0, y: 1.1, orientation: 'h' },
@@ -14153,24 +14176,6 @@ function renderEvidenceTimeline(trackResult) {
 function computeOutcomeHarmonization(config, outcomeKey) {
   if (!config || !config.trials) return null;
 
-  /* Known composite definitions */
-  const compositeMap = {
-    'mace': {
-      '3-point': ['CV death', 'non-fatal MI', 'non-fatal stroke'],
-      '4-point': ['CV death', 'non-fatal MI', 'non-fatal stroke', 'UA hospitalization'],
-      '5-point': ['CV death', 'non-fatal MI', 'non-fatal stroke', 'UA hospitalization', 'coronary revascularization']
-    },
-    'hf_composite': {
-      'cv_death_hfh': ['CV death', 'HF hospitalization'],
-      'cv_death_hfh_urgent': ['CV death', 'HF hospitalization', 'urgent HF visit'],
-      'total_hfh': ['total HF hospitalizations (recurrent)']
-    },
-    'renal_composite': {
-      'standard': ['sustained eGFR decline \u226540%', 'ESKD', 'renal death'],
-      'broad': ['sustained eGFR decline \u226550%', 'ESKD', 'renal death', 'sustained eGFR <15']
-    }
-  };
-
   const issues = [];
   const trialDefs = [];
 
@@ -14185,11 +14190,11 @@ function computeOutcomeHarmonization(config, outcomeKey) {
     const combined = txt + ' ' + src;
 
     if (outcomeKey === 'mace' || outcomeKey === 'default') {
-      if (combined.includes('3-point') || combined.includes('3-pt') || combined.includes('3pt')) detectedType = '3-point MACE';
+      if (combined.includes('5-point') || combined.includes('5-pt') || combined.includes('5pt')) detectedType = '5-point MACE';
       else if (combined.includes('4-point') || combined.includes('4-pt') || combined.includes('4pt')) detectedType = '4-point MACE';
-      else if (combined.includes('5-point') || combined.includes('5-pt') || combined.includes('5pt')) detectedType = '5-point MACE';
-      else if (combined.includes('ua hosp') || combined.includes('unstable angina')) detectedType = '4-point MACE';
+      else if (combined.includes('3-point') || combined.includes('3-pt') || combined.includes('3pt')) detectedType = '3-point MACE';
       else if (combined.includes('revasc')) detectedType = '5-point MACE';
+      else if (combined.includes('ua hosp') || combined.includes('unstable angina')) detectedType = '4-point MACE';
       else detectedType = '3-point MACE (assumed)';
     } else if (outcomeKey.includes('hf') || outcomeKey.includes('heart')) {
       if (combined.includes('recurrent') || combined.includes('total')) detectedType = 'Total HF events (recurrent)';
@@ -14247,7 +14252,7 @@ function renderOutcomeHarmonization(harm) {
       html += '</div>';
     }
   } else {
-    html += '<div style="padding:10px;background:rgba(34,197,94,0.08);border-left:3px solid #22c55e;border-radius:4px;font-size:0.82rem;font-weight:600;">\u2714 All trials use consistent endpoint definitions</div>';
+    html += '<div style="padding:10px;background:rgba(34,197,94,0.08);border-left:3px solid #16a34a;border-radius:4px;font-size:0.82rem;font-weight:600;">\u2714 All trials use consistent endpoint definitions</div>';
   }
 
   /* Definition table */
@@ -14339,7 +14344,7 @@ function computeDataQuality(config) {
 
   const avgScore = trialScores.length > 0 ? Math.round(totalScore / trialScores.length) : 0;
   const grade = avgScore >= 90 ? 'A' : avgScore >= 75 ? 'B' : avgScore >= 60 ? 'C' : avgScore >= 40 ? 'D' : 'F';
-  const gradeColor = avgScore >= 90 ? '#22c55e' : avgScore >= 75 ? '#84cc16' : avgScore >= 60 ? '#f59e0b' : avgScore >= 40 ? '#f97316' : '#ef4444';
+  const gradeColor = avgScore >= 90 ? '#16a34a' : avgScore >= 75 ? '#65a30d' : avgScore >= 60 ? '#d97706' : avgScore >= 40 ? '#ea580c' : '#dc2626';
 
   return { trialScores, avgScore, grade, gradeColor, isAutoGen, k: trialScores.length, configName: config.name };
 }
@@ -14360,21 +14365,21 @@ function renderDataQuality(dq) {
   html += '<div style="font-size:1.5rem;font-weight:700;">' + dq.k + '</div>';
   html += '<div style="font-size:0.72rem;opacity:0.6;">Trials</div></div>';
   html += '<div style="background:var(--bg-card);padding:12px;border-radius:8px;text-align:center;">';
-  html += '<div style="font-size:1.1rem;font-weight:600;color:' + (dq.isAutoGen ? '#f59e0b' : '#22c55e') + ';">' + (dq.isAutoGen ? 'Auto-Generated' : 'Curated') + '</div>';
+  html += '<div style="font-size:1.1rem;font-weight:600;color:' + (dq.isAutoGen ? '#d97706' : '#16a34a') + ';">' + (dq.isAutoGen ? 'Auto-Generated' : 'Curated') + '</div>';
   html += '<div style="font-size:0.72rem;opacity:0.6;">Data Source</div></div></div>';
 
   /* Per-trial table */
   html += '<table style="width:100%;font-size:0.78rem;border-collapse:collapse;">';
   html += '<thead><tr><th style="text-align:left;padding:4px;">Trial</th><th>Year</th><th>NCT ID</th><th>Quality</th><th>Flags</th></tr></thead><tbody>';
   for (const t of dq.trialScores) {
-    const barColor = t.pct >= 80 ? '#22c55e' : t.pct >= 60 ? '#f59e0b' : '#ef4444';
+    const barColor = t.pct >= 80 ? '#16a34a' : t.pct >= 60 ? '#d97706' : '#dc2626';
     html += '<tr><td style="padding:4px;font-weight:600;">' + escapeHtml(t.trialId) + '</td>';
     html += '<td style="text-align:center;">' + (t.year ?? '\u2014') + '</td>';
-    html += '<td style="text-align:center;font-family:monospace;font-size:0.72rem;">' + (t.nctId ?? '\u2014') + '</td>';
+    html += '<td style="text-align:center;font-family:monospace;font-size:0.72rem;">' + escapeHtml(t.nctId ?? '\u2014') + '</td>';
     html += '<td style="text-align:center;"><div style="display:flex;align-items:center;gap:4px;justify-content:center;">';
     html += '<div style="width:50px;height:6px;background:var(--border-color);border-radius:3px;overflow:hidden;"><div style="width:' + t.pct + '%;height:100%;background:' + barColor + ';border-radius:3px;"></div></div>';
     html += '<span style="font-weight:600;color:' + barColor + ';">' + t.pct + '%</span></div></td>';
-    html += '<td style="font-size:0.72rem;opacity:0.7;">' + (t.flags.length > 0 ? t.flags.join('; ') : '<span style="color:#22c55e;">\u2714 Complete</span>') + '</td></tr>';
+    html += '<td style="font-size:0.72rem;opacity:0.7;">' + (t.flags.length > 0 ? escapeHtml(t.flags.join('; ')) : '<span style="color:#16a34a;">\u2714 Complete</span>') + '</td></tr>';
   }
   html += '</tbody></table>';
   area.innerHTML = html;
@@ -14506,7 +14511,7 @@ function generateFullMethodsReport() {
   report += '10. ADVANCED METHODS\n' + '-'.repeat(40) + '\n';
   report += '  - Bayesian random-effects (grid search: flat mu, half-Cauchy tau)\n';
   report += '  - Robust Bayesian MA (RoBMA, 4-model averaging)\n';
-  report += '  - Trial Sequential Analysis (alpha-spending: OBF/Pocock/Lan-DeMets)\n';
+  report += '  - Trial Sequential Analysis (O\'Brien-Fleming alpha-spending boundaries)\n';
   report += '  - Z-curve (Expected Replication Rate / Discovery Rate)\n';
   report += '  - Sceptical p-value (Matthews 2018)\n';
   report += '  - Intrinsic credibility (Held 2019)\n';
@@ -14534,10 +14539,10 @@ function generateFullMethodsReport() {
   report += '12. RESULTS SNAPSHOT (' + outcomeKey.toUpperCase() + ')\n' + '-'.repeat(40) + '\n';
   const or = Math.exp(track.primary.estimate);
   report += 'Studies included: k = ' + k + '\n';
-  report += 'Pooled ' + track.measure + ': ' + or.toFixed(3) + ' (95% CI: ' + Math.exp(track.primary.ci[0]).toFixed(3) + ' to ' + Math.exp(track.primary.ci[1]).toFixed(3) + ')\n';
+  report += 'Pooled ' + track.measure + ': ' + or.toFixed(3) + ' (' + (confLevel * 100) + '% CI: ' + Math.exp(track.primary.ci[0]).toFixed(3) + ' to ' + Math.exp(track.primary.ci[1]).toFixed(3) + ')\n';
   report += 'Tau-squared (' + tau2Method + '): ' + (track.primary.tau2 ?? 0).toFixed(4) + '\n';
   report += 'I-squared: ' + track.primary.I2.toFixed(1) + '%\n';
-  report += 'Q-test: p = ' + (track.primary.Qp ?? NaN).toFixed(4) + '\n';
+  report += 'Q-test: p = ' + (track.primary.Qp != null ? track.primary.Qp.toFixed(4) : 'N/A') + '\n';
   if (track.primary.pi) report += 'Prediction interval: ' + Math.exp(track.primary.pi[0]).toFixed(3) + ' to ' + Math.exp(track.primary.pi[1]).toFixed(3) + '\n';
   report += '\n';
 
@@ -14565,7 +14570,7 @@ function renderMethodsReport() {
   html += '<button class="btn btn-outline" onclick="copyMethodsReport()" style="font-size:0.8rem;">Copy to Clipboard</button>';
   html += '<button class="btn btn-outline" onclick="downloadMethodsReport()" style="font-size:0.8rem;">Download .txt</button>';
   html += '</div>';
-  html += '<pre style="white-space:pre-wrap;font-size:0.78rem;max-height:600px;overflow-y:auto;background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid var(--border-color);line-height:1.6;">' + escapeHtml(report) + '</pre>';
+  html += '<pre tabindex="0" role="region" aria-label="Methods report" style="white-space:pre-wrap;font-size:0.78rem;max-height:600px;overflow-y:auto;background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid var(--border-color);line-height:1.6;">' + escapeHtml(report) + '</pre>';
   area.innerHTML = html;
 }
 
