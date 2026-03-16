@@ -1230,6 +1230,7 @@
   </div>
   <!-- Metrics bar (shows classifier accuracy after >= 3 confirmed decisions) -->
   <div class="screen-metrics-bar" id="screen-metrics-bar"></div>
+  <div id="classifierMetricsArea" style="display:none;padding:8px 16px;"></div>
   <!-- Split panel -->
   <div class="screen-layout">
     <div class="screen-sidebar" id="screen-list">
@@ -1539,6 +1540,13 @@
   <div class="section-header" style="margin-top:24px;">Meta-Regression (Subgroup &amp; Year)</div>
   <div id="metaRegArea" class="stub-area">Run synthesis first</div>
   <div id="metaRegPlot" style="min-height:300px;"></div>
+
+  <div class="section-header" style="margin-top:24px;">Three-Level Meta-Analysis (Clustered Studies)</div>
+  <div id="threeLevelMAArea" class="stub-area">Run synthesis first. 3-level MA handles multi-arm trials and nested study structures.</div>
+
+  <div class="section-header" style="margin-top:24px;">Evidence Velocity &amp; Maturity</div>
+  <div id="evidenceVelocityArea" class="stub-area">Run synthesis first to see evidence accumulation rate and maturity assessment.</div>
+  <div id="evidenceVelocityPlot" style="min-height:350px;"></div>
 </div>
 
 <!-- ─────────────────── BIAS TAB ─────────────────── -->
@@ -1599,6 +1607,10 @@
   <div class="section-header" style="margin-top:24px;">Influence Diagnostics Suite (Viechtbauer &amp; Cheung 2010)</div>
   <div id="influenceSuiteArea" class="stub-area">Run synthesis first</div>
 
+  <div class="section-header" style="margin-top:24px;">Cook's Distance &amp; DFBETAS</div>
+  <div id="cooksDistanceArea" class="stub-area">Run synthesis first for detailed influence diagnostics.</div>
+  <div id="cooksDistancePlot" style="min-height:350px;"></div>
+
   <div class="section-header" style="margin-top:24px;">Registry-Based Publication Bias Audit (ClinicalTrials.gov)</div>
   <div id="registryAuditArea" class="stub-area">Run synthesis first</div>
 
@@ -1631,6 +1643,9 @@
       Run synthesis first to generate methods text.
     </div>
   </div>
+
+  <div class="section-header" style="margin-top:24px;">Decision Regret Analysis</div>
+  <div id="decisionRegretArea" class="stub-area">Run synthesis first. Quantifies expected regret of acting vs waiting based on current evidence strength.</div>
 
   <div class="section-header" style="margin-top:24px;">Full Manuscript Draft (Methods + Results)</div>
   <div style="position:relative;">
@@ -4693,7 +4708,7 @@ function handleConfigChange(configId) {
   ['forestPlotContainer','funnelPlotContainer','galbraithPlot','baujatPlot','labbePlot',
    'goshPlot','doiPlot','tsaPlotContainer','predDistPlot','seqBayesPlot','cdCurvePlot',
    'subgroupForestPlot','bayesPosteriorPlot','nntCurvePlot','metaRegPlot',
-   'nmaNetworkPlot','evidenceTimelinePlot'
+   'nmaNetworkPlot','evidenceTimelinePlot','evidenceVelocityPlot','cooksDistancePlot'
   ].forEach(function(id) { var el = document.getElementById(id); if (el) { try { Plotly.purge(el); } catch(e) {} } });
   /* Clear stale result panels */
   ['synthesisResultsArea','trackAResults','trackBResults','gradeSofTable',
@@ -7968,6 +7983,21 @@ function runSynthesis() {
     cdPredInt, evidenceDelta: evDelta, permTest: perm, gosh, profileLik: profLik,
     failsafeN: fsn, robma, bayesPosterior, nntCurve, metaRegression: metaReg,
     nma: nmaResult, harmonization: harmResult, dataQuality: dqResult });
+  // Three-level MA
+  const threeLevelResult = computeThreeLevelMA(evTrack.yi, evTrack.vi, (evTrack.trials ?? []).map(t => t.name));
+  renderThreeLevelMA(threeLevelResult);
+  // Evidence velocity & maturity
+  const evVelocity = computeEvidenceVelocity(evTrack, config);
+  renderEvidenceVelocity(evVelocity);
+  // Decision regret analysis
+  const drResult = computeDecisionRegret(evTrack);
+  renderDecisionRegret(drResult);
+  // Cook's distance & DFBETAS
+  const cdResult = computeCooksDistance(evTrack.yi, evTrack.vi, evTrack.primary?.tau2 ?? 0, (evTrack.trials ?? []).map(t => t.name));
+  renderCooksDistance(cdResult);
+  // Classifier metrics (screening audit)
+  const cmResult = computeClassifierMetrics(config);
+  renderClassifierMetrics(cmResult);
 
   /* Post-process tables for a11y + mobile */
   postProcessTables();
@@ -8762,7 +8792,7 @@ function renderGradeTable() {
   html += '<h3 style="margin-bottom:12px;">GRADE Assessment: <span style="color:' + (certaintyColors[grade.finalCertainty] ?? '#888') + ';font-size:1.1em;">' + grade.finalCertainty + '</span>';
   html += ' <span style="font-size:1.2em;letter-spacing:2px;">' + (certaintySymbols[grade.finalCertainty] ?? '') + '</span></h3>';
 
-  html += '<table class="data-table"><thead><tr><th>Domain</th><th>Assessment</th><th>Downgrade</th><th>Reason</th></tr></thead><tbody>';
+  html += '<table class="data-table"><caption class="sr-only">GRADE Summary of Findings: domain-level assessment</caption><thead><tr><th scope="col">Domain</th><th scope="col">Assessment</th><th scope="col">Downgrade</th><th scope="col">Reason</th></tr></thead><tbody>';
   const domainLabels = { rob: 'Risk of Bias', inconsistency: 'Inconsistency', indirectness: 'Indirectness', imprecision: 'Imprecision', publicationBias: 'Publication Bias' };
   for (const [key, info] of Object.entries(grade.domains)) {
     const dg = info.downgrade ?? 0;
@@ -8853,8 +8883,9 @@ function exportSoFHTML() {
     const ciLo = exp(track.primary.ci[0]);
     const ciHi = exp(track.primary.ci[1]);
     const certClass = grade.finalCertainty === 'HIGH' ? 'high' : grade.finalCertainty === 'MODERATE' ? 'mod' : 'low';
-    html += '<p style="margin-top:12px;"><strong>Pooled estimate:</strong> ' + track.measure + ' = ' + est.toFixed(2);
-    html += ' (95% CI: ' + ciLo.toFixed(2) + ' \u2013 ' + ciHi.toFixed(2) + ')';
+    const clPct = Math.round((AppState.settings?.confLevel ?? 0.95) * 100);
+    html += '<p style="margin-top:12px;"><strong>Pooled estimate:</strong> ' + escapeHtml(track.measure) + ' = ' + est.toFixed(2);
+    html += ' (' + clPct + '% CI: ' + ciLo.toFixed(2) + ' \u2013 ' + ciHi.toFixed(2) + ')';
     html += ' | I\u00B2 = ' + track.primary.I2.toFixed(1) + '%';
     html += ' | <span class="' + certClass + '">Certainty: ' + grade.finalCertainty + ' ' + (certaintySymbols[grade.finalCertainty] ?? '') + '</span></p>';
   }
@@ -8868,8 +8899,7 @@ function exportSoFHTML() {
   a.download = 'SoF_' + (config.id ?? 'LivingMeta') + '_' + (r.outcomeKey ?? 'primary') + '.doc';
   document.body.appendChild(a);
   a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  setTimeout(function() { URL.revokeObjectURL(url); a.remove(); }, 200);
   showToast('SoF table exported as Word document.');
 }
 
@@ -13884,6 +13914,345 @@ function renderMetaRegression(reg) {
 
 
 /* ═══════════════════════════════════════════════════════════════════
+   FEATURE P: THREE-LEVEL META-ANALYSIS (Konstantopoulos 2011)
+   ═══════════════════════════════════════════════════════════════════ */
+
+function computeThreeLevelMA(yi, vi, trialIds) {
+  if (!yi || yi.length < 3) return null;
+  const k = yi.length;
+  const confLevel = AppState.settings?.confLevel ?? 0.95;
+  const clusterOf = trialIds.map(id => (id ?? '').replace(/[\s_-]?\d{4}$/, '').toLowerCase());
+  const clusters = [...new Set(clusterOf)];
+  const nClusters = clusters.length;
+  if (nClusters === k) return null;
+  const wi0 = vi.map(v => 1 / v), sumW0 = sum(wi0);
+  const theta0 = sum(yi.map((y, i) => wi0[i] * y)) / sumW0;
+  const Q = sum(yi.map((y, i) => wi0[i] * Math.pow(y - theta0, 2)));
+  const C0 = sumW0 - sum(wi0.map(w => w * w)) / sumW0;
+  const tau2DL = Math.max(0, (Q - (k - 1)) / C0);
+  let tau2W = tau2DL * 0.5, tau2B = tau2DL * 0.5, converged = false;
+  for (let iter = 0; iter < 50; iter++) {
+    const prevW = tau2W, prevB = tau2B;
+    const clusterEst = [];
+    for (const cl of clusters) {
+      const idx = clusterOf.map((c, i) => c === cl ? i : -1).filter(i => i >= 0);
+      const wc = idx.map(i => 1 / (vi[i] + tau2W));
+      const sumWc = sum(wc);
+      const thetaC = sum(idx.map((j, ii) => wc[ii] * yi[j])) / sumWc;
+      clusterEst.push({ theta: thetaC, var: 1 / sumWc, k: idx.length, idx });
+    }
+    const wcB = clusterEst.map(c => 1 / (c.var + tau2B));
+    const sumWB = sum(wcB);
+    const thetaG = sum(clusterEst.map((c, i) => wcB[i] * c.theta)) / sumWB;
+    const QB = sum(clusterEst.map((c, i) => wcB[i] * Math.pow(c.theta - thetaG, 2)));
+    const CB = sumWB - sum(wcB.map(w => w * w)) / sumWB;
+    tau2B = Math.max(0, (QB - (nClusters - 1)) / Math.max(CB, 1e-15));
+    let QW = 0, dfW = 0;
+    for (const c of clusterEst) {
+      if (c.k < 2) continue;
+      const wiW = c.idx.map(j => 1 / (vi[j] + tau2W));
+      const sumWW = sum(wiW);
+      const muC = sum(c.idx.map((j, ii) => wiW[ii] * yi[j])) / sumWW;
+      QW += sum(c.idx.map((j, ii) => wiW[ii] * Math.pow(yi[j] - muC, 2)));
+      dfW += c.k - 1;
+    }
+    if (dfW > 0) { const CW = QW / dfW; tau2W = Math.max(0, CW > 1 ? tau2W * CW : tau2W * 0.5); }
+    if (Math.abs(tau2W - prevW) + Math.abs(tau2B - prevB) < 1e-6) { converged = true; break; }
+  }
+  const tau2T = tau2W + tau2B;
+  const wiF = vi.map(v => 1 / (v + tau2T));
+  const sumWF = sum(wiF);
+  const theta = sum(yi.map((y, i) => wiF[i] * y)) / sumWF;
+  const se = Math.sqrt(1 / sumWF);
+  const tCrit = nClusters > 2 ? tQuantile(1 - (1 - confLevel) / 2, nClusters - 1) : normalQuantile(1 - (1 - confLevel) / 2);
+  return {
+    theta, se, display: Math.exp(theta), ciLo: Math.exp(theta - tCrit * se), ciHi: Math.exp(theta + tCrit * se),
+    tau2Within: tau2W, tau2Between: tau2B, tau2Total: tau2T,
+    iccWithin: tau2T > 0 ? tau2W / tau2T : 0, iccBetween: tau2T > 0 ? tau2B / tau2T : 0,
+    nEffects: k, nClusters, converged, df: nClusters - 1,
+    reference: 'Konstantopoulos S. Res Synth Methods 2011;2:61-76'
+  };
+}
+
+function renderThreeLevelMA(result) {
+  const area = document.getElementById('threeLevelMAArea');
+  if (!area) return;
+  if (!result) { area.innerHTML = '<span style="opacity:0.6;">All studies from unique trials (no clustering). 3-level MA requires multi-arm or multi-report trials.</span>'; return; }
+  const cl = AppState.settings?.confLevel ?? 0.95;
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px;">';
+  const cards = [
+    { label: 'Pooled Effect', value: result.display.toFixed(3), sub: (cl * 100) + '% CI: ' + result.ciLo.toFixed(3) + '\u2013' + result.ciHi.toFixed(3) },
+    { label: 'Clusters', value: result.nClusters, sub: result.nEffects + ' effects' },
+    { label: '\u03C4\u00B2 Within', value: result.tau2Within.toFixed(4), sub: 'ICC=' + (result.iccWithin * 100).toFixed(1) + '%' },
+    { label: '\u03C4\u00B2 Between', value: result.tau2Between.toFixed(4), sub: 'ICC=' + (result.iccBetween * 100).toFixed(1) + '%' },
+    { label: 'Converged', value: result.converged ? '\u2714' : '\u2718', sub: 'df=' + result.df }
+  ];
+  for (const c of cards) {
+    html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
+    html += '<div style="font-size:1.1rem;font-weight:700;">' + c.value + '</div>';
+    html += '<div style="font-size:0.7rem;opacity:0.6;">' + c.label + '</div>';
+    if (c.sub) html += '<div style="font-size:0.68rem;opacity:0.5;margin-top:2px;">' + c.sub + '</div>';
+    html += '</div>';
+  }
+  html += '</div><div style="font-size:0.72rem;opacity:0.5;">' + escapeHtml(result.reference) + '. Uses t-distribution (df=' + result.df + ').</div>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE Q: EVIDENCE VELOCITY & MATURITY
+   ═══════════════════════════════════════════════════════════════════ */
+
+function computeEvidenceVelocity(trackResult, config) {
+  if (!trackResult || !trackResult.cumulative || trackResult.cumulative.length < 3) return null;
+  const cum = trackResult.cumulative, k = cum.length;
+  const measure = trackResult.measure ?? 'OR';
+  const isRatio = ['HR','OR','RR','IRR'].includes(measure);
+  const ciWidths = cum.map(c => c.ci[1] - c.ci[0]);
+  let narrowingSteps = 0;
+  for (let i = 1; i < ciWidths.length; i++) if (ciWidths[i] < ciWidths[i - 1]) narrowingSteps++;
+  const narrowingRate = narrowingSteps / Math.max(k - 1, 1);
+  let directionFlips = 0;
+  for (let i = 1; i < cum.length; i++) {
+    if ((cum[i - 1].estimate < 0 && cum[i].estimate >= 0) || (cum[i - 1].estimate >= 0 && cum[i].estimate < 0)) directionFlips++;
+  }
+  const recent = cum.slice(-Math.min(4, k));
+  let velocitySum = 0;
+  for (let i = 1; i < recent.length; i++) velocitySum += Math.abs(Math.exp(recent[i].estimate) - Math.exp(recent[i - 1].estimate));
+  const velocity = recent.length > 1 ? velocitySum / (recent.length - 1) : 0;
+  let stability;
+  if (velocity < 0.01 && directionFlips === 0 && narrowingRate > 0.7) stability = 'STABLE';
+  else if (velocity < 0.05 && directionFlips <= 1) stability = 'CONVERGING';
+  else if (velocity < 0.10) stability = 'EVOLVING';
+  else stability = 'VOLATILE';
+  const yearCounts = {};
+  for (const t of (trackResult.trials ?? [])) { const yr = t.year; if (yr && yr > 1990) yearCounts[yr] = (yearCounts[yr] ?? 0) + 1; }
+  const years = Object.keys(yearCounts).map(Number).sort((a, b) => a - b);
+  const lastYears = years.slice(-3);
+  const avgRate = lastYears.length > 0 ? sum(lastYears.map(y => yearCounts[y])) / lastYears.length : 0;
+  const trend = years.length >= 3 ? (yearCounts[years[years.length - 1]] > yearCounts[years[years.length - 2]] ? 'accelerating' : 'stable') : 'insufficient';
+  let totalN = 0;
+  for (const t of (config.trials ?? [])) totalN += t.nTotal ?? ((t.nTreatment ?? 0) + (t.nControl ?? 0));
+  const maturity = Math.min(100, Math.round(
+    (Math.min(k, 10) / 10) * 30 + narrowingRate * 25 +
+    (directionFlips === 0 ? 20 : directionFlips === 1 ? 10 : 0) +
+    (totalN > 10000 ? 25 : totalN > 5000 ? 15 : totalN > 1000 ? 8 : 0)));
+  return { velocity, stability, directionFlips, narrowingRate, maturity, yearCounts,
+    prediction: { avgRate, predicted1yr: k + avgRate, predicted3yr: k + avgRate * 3, trend },
+    totalN, k, firstYear: years[0] ?? null, lastYear: years[years.length - 1] ?? null, measure };
+}
+
+function renderEvidenceVelocity(ev) {
+  const area = document.getElementById('evidenceVelocityArea');
+  const plotDiv = document.getElementById('evidenceVelocityPlot');
+  if (!area) return;
+  if (!ev) { area.innerHTML = '<span style="opacity:0.6;">Need k \u2265 3 with year data</span>'; if (plotDiv) Plotly.purge(plotDiv); return; }
+  const stabColor = { STABLE: '#16a34a', CONVERGING: '#2563eb', EVOLVING: '#d97706', VOLATILE: '#dc2626' }[ev.stability] ?? '#64748b';
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px;">';
+  const cards = [
+    { label: 'Stability', value: ev.stability, color: stabColor },
+    { label: 'Maturity', value: ev.maturity + '/100', color: ev.maturity >= 70 ? '#16a34a' : ev.maturity >= 40 ? '#d97706' : '#dc2626' },
+    { label: 'Velocity', value: ev.velocity.toFixed(3), color: ev.velocity < 0.01 ? '#16a34a' : '#d97706' },
+    { label: 'Direction Flips', value: ev.directionFlips, color: ev.directionFlips === 0 ? '#16a34a' : '#d97706' },
+    { label: 'CI Narrowing', value: (ev.narrowingRate * 100).toFixed(0) + '%' },
+    { label: 'Total N', value: ev.totalN > 0 ? ev.totalN.toLocaleString() : '\u2014' },
+    { label: 'Span', value: ev.firstYear && ev.lastYear ? ev.firstYear + '\u2013' + ev.lastYear : '\u2014' },
+    { label: 'Prediction (3yr)', value: '+' + (ev.prediction.predicted3yr - ev.k).toFixed(0) + ' (' + ev.prediction.trend + ')' }
+  ];
+  for (const c of cards) {
+    html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
+    html += '<div style="font-size:1rem;font-weight:700;' + (c.color ? 'color:' + c.color + ';' : '') + '">' + c.value + '</div>';
+    html += '<div style="font-size:0.7rem;opacity:0.6;">' + c.label + '</div></div>';
+  }
+  html += '</div>';
+  area.innerHTML = html;
+  if (plotDiv && ev.yearCounts) {
+    const isDark = document.body.classList.contains('dark-mode');
+    const yrs = Object.keys(ev.yearCounts).map(Number).sort((a, b) => a - b);
+    Plotly.purge(plotDiv);
+    Plotly.newPlot(plotDiv, [{ x: yrs, y: yrs.map(y => ev.yearCounts[y]), type: 'bar', marker: { color: '#3b82f6', opacity: 0.8 } }], {
+      title: { text: 'Trials per Year', font: { size: 14 } },
+      xaxis: { title: 'Year', gridcolor: isDark ? '#334155' : '#e2e8f0', dtick: 1 },
+      yaxis: { title: 'New Trials', gridcolor: isDark ? '#334155' : '#e2e8f0' },
+      paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+      font: { color: isDark ? '#e2e8f0' : '#1e293b' }, margin: { t: 40, b: 50, l: 50, r: 20 }
+    }, { responsive: true });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE R: DECISION REGRET ANALYSIS
+   ═══════════════════════════════════════════════════════════════════ */
+
+function computeDecisionRegret(trackResult) {
+  if (!trackResult || !trackResult.primary) return null;
+  const est = trackResult.primary.estimate, se = trackResult.primary.se;
+  const tau2 = trackResult.primary.tau2 ?? 0, k = trackResult.k;
+  const pBenefit = normalCDF(-est / Math.sqrt(se * se + tau2));
+  const effect = Math.exp(est);
+  const ciLo = Math.exp(trackResult.primary.ci[0]), ciHi = Math.exp(trackResult.primary.ci[1]);
+  const I2 = trackResult.primary.I2 ?? 0;
+  const piCoversNull = trackResult.primary.pi ? (Math.exp(trackResult.primary.pi[0]) < 1 && Math.exp(trackResult.primary.pi[1]) > 1) : true;
+  let verdict, regretAct, regretWait, recommendation;
+  if (pBenefit > 0.975 && ciHi < 1.0 && !piCoversNull) {
+    verdict = 'STRONG BENEFIT'; regretAct = 0.02; regretWait = 0.85;
+    recommendation = 'Evidence supports adoption. Delay carries opportunity cost.';
+  } else if (pBenefit > 0.90 && ciHi < 1.0) {
+    verdict = 'PROBABLE BENEFIT'; regretAct = 0.10; regretWait = 0.55;
+    recommendation = 'Evidence favors benefit. Consider adoption with monitoring.';
+  } else if (pBenefit > 0.70) {
+    verdict = 'POSSIBLE BENEFIT'; regretAct = 0.25; regretWait = 0.30;
+    recommendation = 'Suggestive but uncertain. More trials would reduce decision risk.';
+  } else if (pBenefit > 0.30) {
+    verdict = 'UNCERTAIN'; regretAct = 0.50; regretWait = 0.15;
+    recommendation = 'Evidence does not clearly favor either direction. Wait for more data.';
+  } else {
+    verdict = 'POSSIBLE HARM'; regretAct = 0.80; regretWait = 0.05;
+    recommendation = 'Evidence suggests potential harm. Do not adopt without further study.';
+  }
+  let nntOC = null;
+  if (pBenefit > 0.70 && effect < 1) {
+    const cer = 0.10, eer = cer * effect, ard = cer - eer;
+    const nnt = ard > 0 ? Math.round(1 / ard) : null;
+    if (nnt && nnt > 0 && nnt < 10000) nntOC = { nnt, eventsPerThousand: Math.round(ard * 1000), cer };
+  }
+  const totalN = (trackResult.trials ?? []).reduce((s, t) => s + (t.tN ?? 0) + (t.cN ?? 0), 0);
+  const logEff = Math.abs(est);
+  const ris = logEff > 0 ? Math.round(4 * Math.pow(normalQuantile(0.975) + normalQuantile(0.80), 2) / (logEff * logEff)) : Infinity;
+  const infoFrac = ris > 0 && isFinite(ris) ? Math.min(1, totalN / ris) : null;
+  return { verdict, pBenefit, pHarm: 1 - pBenefit, effect, ciLo, ciHi, regretAct, regretWait, recommendation,
+    nntOpportunityCost: nntOC, I2, piCoversNull, k, infoFraction: infoFrac, totalN, ris: isFinite(ris) ? ris : null };
+}
+
+function renderDecisionRegret(dr) {
+  const area = document.getElementById('decisionRegretArea');
+  if (!area) return;
+  if (!dr) { area.innerHTML = '<span style="opacity:0.6;">Run synthesis first</span>'; return; }
+  const vc = { 'STRONG BENEFIT': '#16a34a', 'PROBABLE BENEFIT': '#2563eb', 'POSSIBLE BENEFIT': '#d97706', 'UNCERTAIN': '#64748b', 'POSSIBLE HARM': '#dc2626' }[dr.verdict] ?? '#64748b';
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:12px;">';
+  html += '<div style="background:var(--bg-card);padding:14px;border-radius:8px;text-align:center;border-left:4px solid ' + vc + ';"><div style="font-size:1.1rem;font-weight:800;color:' + vc + ';">' + dr.verdict + '</div><div style="font-size:0.7rem;opacity:0.6;">Decision Verdict</div></div>';
+  html += '<div style="background:var(--bg-card);padding:14px;border-radius:8px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;">' + (dr.pBenefit * 100).toFixed(1) + '%</div><div style="font-size:0.7rem;opacity:0.6;">P(Benefit)</div></div>';
+  html += '<div style="background:var(--bg-card);padding:14px;border-radius:8px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#dc2626;">' + (dr.regretAct * 100).toFixed(0) + '%</div><div style="font-size:0.7rem;opacity:0.6;">Regret (Act)</div></div>';
+  html += '<div style="background:var(--bg-card);padding:14px;border-radius:8px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#d97706;">' + (dr.regretWait * 100).toFixed(0) + '%</div><div style="font-size:0.7rem;opacity:0.6;">Regret (Wait)</div></div>';
+  if (dr.infoFraction != null) {
+    const ifc = dr.infoFraction >= 1 ? '#16a34a' : dr.infoFraction >= 0.5 ? '#d97706' : '#dc2626';
+    html += '<div style="background:var(--bg-card);padding:14px;border-radius:8px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:' + ifc + ';">' + (dr.infoFraction * 100).toFixed(0) + '%</div><div style="font-size:0.7rem;opacity:0.6;">Info Fraction</div></div>';
+  }
+  html += '</div>';
+  html += '<div style="padding:10px;background:var(--bg-card);border-radius:6px;border-left:3px solid ' + vc + ';font-size:0.85rem;margin-bottom:8px;"><strong>Recommendation:</strong> ' + escapeHtml(dr.recommendation) + '</div>';
+  if (dr.nntOpportunityCost) {
+    const oc = dr.nntOpportunityCost;
+    html += '<div style="padding:10px;background:rgba(59,130,246,0.06);border-radius:6px;font-size:0.82rem;"><strong>Opportunity Cost:</strong> NNT=' + oc.nnt + ' (CER=' + (oc.cer * 100) + '%). ~' + oc.eventsPerThousand + ' fewer events per 1,000 treated.</div>';
+  }
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE S: COOK'S DISTANCE & DFBETAS (Viechtbauer & Cheung 2010)
+   ═══════════════════════════════════════════════════════════════════ */
+
+function computeCooksDistance(yi, vi, tau2, trialNames) {
+  if (!yi || yi.length < 3) return null;
+  const k = yi.length, threshold = 4 / k;
+  const wiF = vi.map(v => 1 / (v + tau2)), sumWF = sum(wiF);
+  const thetaFull = sum(yi.map((y, i) => wiF[i] * y)) / sumWF;
+  const varTheta = 1 / sumWF;
+  const results = [];
+  let maxCookD = 0, maxStudy = '';
+  for (let i = 0; i < k; i++) {
+    const wiLoo = vi.filter((_, j) => j !== i).map(v => 1 / (v + tau2));
+    const yiLoo = yi.filter((_, j) => j !== i);
+    const sumWLoo = sum(wiLoo);
+    const thetaLoo = sum(yiLoo.map((y, j) => wiLoo[j] * y)) / sumWLoo;
+    const cookD = Math.pow(thetaFull - thetaLoo, 2) / varTheta;
+    const dfbetas = (thetaFull - thetaLoo) / Math.sqrt(varTheta);
+    const leverage = wiF[i] / sumWF;
+    const residual = (yi[i] - thetaFull) / Math.sqrt(vi[i] + tau2);
+    const dffits = leverage > 0.999 ? 0 : residual * Math.sqrt(leverage / (1 - leverage));
+    const covRatio = k > 2 ? (1 - leverage) * (k - 1) / (k - 2) : 1;
+    if (cookD > maxCookD) { maxCookD = cookD; maxStudy = trialNames[i] ?? ('Study ' + (i + 1)); }
+    results.push({ name: trialNames[i] ?? ('Study ' + (i + 1)), cookD, dfbetas, dffits, leverage, residual, covRatio, thetaLoo: Math.exp(thetaLoo), influential: cookD > threshold });
+  }
+  return { results, threshold, maxCookD, maxStudy, influentialCount: results.filter(r => r.influential).length, reference: 'Viechtbauer W, Cheung MW. Res Synth Methods 2010;1:112-125' };
+}
+
+function renderCooksDistance(cd) {
+  const area = document.getElementById('cooksDistanceArea');
+  const plotDiv = document.getElementById('cooksDistancePlot');
+  if (!area) return;
+  if (!cd) { area.innerHTML = '<span style="opacity:0.6;">Need k \u2265 3</span>'; if (plotDiv) Plotly.purge(plotDiv); return; }
+  let html = '<div style="font-size:0.85rem;margin-bottom:12px;">';
+  if (cd.influentialCount === 0) html += '<span style="color:#16a34a;font-weight:600;">\u2714 No influential studies</span> (threshold: 4/k=' + cd.threshold.toFixed(3) + ')';
+  else html += '<span style="color:#dc2626;font-weight:600;">\u26A0 ' + cd.influentialCount + ' influential</span> exceeding 4/k=' + cd.threshold.toFixed(3) + ' \u2014 most: <strong>' + escapeHtml(cd.maxStudy) + '</strong> (D=' + cd.maxCookD.toFixed(3) + ')';
+  html += '</div>';
+  html += '<table style="width:100%;font-size:0.75rem;border-collapse:collapse;"><thead><tr><th style="text-align:left;padding:4px;">Study</th><th>Cook\'s D</th><th>DFBETAS</th><th>DFFITS</th><th>Leverage</th><th>Residual</th><th>CovRatio</th><th>Flag</th></tr></thead><tbody>';
+  for (const r of cd.results) {
+    html += '<tr style="background:' + (r.influential ? 'rgba(220,38,38,0.06)' : '') + ';"><td style="padding:4px;font-weight:600;">' + escapeHtml(r.name) + '</td>';
+    html += '<td style="text-align:center;' + (r.influential ? 'font-weight:700;color:#dc2626;' : '') + '">' + r.cookD.toFixed(3) + '</td>';
+    html += '<td style="text-align:center;">' + r.dfbetas.toFixed(3) + '</td><td style="text-align:center;">' + r.dffits.toFixed(3) + '</td>';
+    html += '<td style="text-align:center;">' + r.leverage.toFixed(3) + '</td><td style="text-align:center;">' + r.residual.toFixed(3) + '</td>';
+    html += '<td style="text-align:center;">' + r.covRatio.toFixed(3) + '</td><td style="text-align:center;">' + (r.influential ? '\u26A0' : '\u2714') + '</td></tr>';
+  }
+  html += '</tbody></table><div style="font-size:0.7rem;opacity:0.5;margin-top:6px;">' + escapeHtml(cd.reference) + '</div>';
+  area.innerHTML = html;
+  if (plotDiv) {
+    const isDark = document.body.classList.contains('dark-mode');
+    Plotly.purge(plotDiv);
+    Plotly.newPlot(plotDiv, [
+      { x: cd.results.map(r => r.name), y: cd.results.map(r => r.cookD), type: 'bar', marker: { color: cd.results.map(r => r.influential ? '#dc2626' : '#3b82f6'), opacity: 0.85 } },
+      { x: [cd.results[0]?.name, cd.results[cd.results.length - 1]?.name], y: [cd.threshold, cd.threshold], mode: 'lines', name: '4/k', line: { color: '#dc2626', dash: 'dash', width: 2 } }
+    ], {
+      title: { text: 'Cook\'s Distance', font: { size: 14 } },
+      xaxis: { gridcolor: isDark ? '#334155' : '#e2e8f0' }, yaxis: { title: 'Cook\'s D', gridcolor: isDark ? '#334155' : '#e2e8f0' },
+      paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+      font: { color: isDark ? '#e2e8f0' : '#1e293b' }, margin: { t: 40, b: 80, l: 50, r: 20 }, showlegend: true
+    }, { responsive: true });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE T: CLASSIFIER METRICS
+   ═══════════════════════════════════════════════════════════════════ */
+
+function computeClassifierMetrics(config) {
+  if (!config || !config.trials) return null;
+  const screenLog = AppState.screenLog ?? {};
+  const decisions = Object.values(screenLog);
+  if (decisions.length < 3) return null;
+  const baselineIds = new Set(config.trials.map(t => (t.id ?? '').toLowerCase()));
+  let tp = 0, fp = 0, fn = 0, tn = 0;
+  for (const d of decisions) {
+    const id = (d.id ?? d.trialId ?? '').toLowerCase();
+    const isBaseline = baselineIds.has(id);
+    const included = d.decision === 'include' || d.status === 'include';
+    if (included && isBaseline) tp++;
+    else if (included && !isBaseline) fp++;
+    else if (!included && isBaseline) fn++;
+    else tn++;
+  }
+  const precision = (tp + fp) > 0 ? tp / (tp + fp) : 0;
+  const recall = (tp + fn) > 0 ? tp / (tp + fn) : 0;
+  const f1 = (precision + recall) > 0 ? 2 * precision * recall / (precision + recall) : 0;
+  const accuracy = (tp + fp + fn + tn) > 0 ? (tp + tn) / (tp + fp + fn + tn) : 0;
+  return { tp, fp, fn, tn, precision, recall, f1, accuracy, total: decisions.length };
+}
+
+function renderClassifierMetrics(cm) {
+  const area = document.getElementById('classifierMetricsArea');
+  if (!area) return;
+  if (!cm) { area.style.display = 'none'; return; }
+  area.style.display = 'block';
+  const f1c = cm.f1 >= 0.8 ? '#16a34a' : cm.f1 >= 0.5 ? '#d97706' : '#dc2626';
+  let html = '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:0.78rem;">';
+  html += '<span style="font-weight:600;">Classifier:</span>';
+  html += '<span>Acc: <strong>' + (cm.accuracy * 100).toFixed(1) + '%</strong></span>';
+  html += '<span>Prec: <strong>' + (cm.precision * 100).toFixed(1) + '%</strong></span>';
+  html += '<span>Rec: <strong>' + (cm.recall * 100).toFixed(1) + '%</strong></span>';
+  html += '<span style="color:' + f1c + ';font-weight:700;">F1: ' + (cm.f1 * 100).toFixed(1) + '%</span>';
+  html += '<span style="opacity:0.6;">(TP=' + cm.tp + ' FP=' + cm.fp + ' FN=' + cm.fn + ' TN=' + cm.tn + ')</span></div>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    FEATURE K: NETWORK META-ANALYSIS (NMA) — Bucher indirect comparisons
    For configs with 3+ drug classes, computes indirect treatment comparisons,
    league table, P-scores (frequentist SUCRA analogue), and consistency test.
@@ -14645,7 +15014,7 @@ function renderPatientSummary() {
 
   /* GRADE certainty */
   const grade = r.grade;
-  const certainty = grade ? ['VERY LOW', 'LOW', 'MODERATE', 'HIGH'][Math.max(0, 4 - Math.ceil(Object.values(grade.domains ?? {}).reduce((s,d) => s + (d.downgrade ?? 0), 0)))] : 'Not assessed';
+  const certainty = grade?.finalCertainty ?? 'Not assessed';
 
   /* Build summary */
   const summaryEl = document.getElementById('trackBResults');

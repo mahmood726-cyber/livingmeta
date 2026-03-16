@@ -190,6 +190,54 @@ def run_tests():
         ok('methods report container exists', d.execute_script(
             'return document.getElementById("methodsReportArea") !== null'))
 
+        # ─── 66-78: Round 3 features (3-level MA, velocity, regret, Cook's D, classifier) ───
+        ok('computeThreeLevelMA fn exists', d.execute_script(
+            'return typeof computeThreeLevelMA === "function"'))
+        ok('3-level MA returns null for unique trials', d.execute_script('''
+            var cfg = CONFIG_LIBRARY.colchicine_cvd;
+            var trackB = synthesizeTrackB(cfg.trials, "mace");
+            if (!trackB) return true;
+            var r = computeThreeLevelMA(trackB.yi, trackB.vi, trackB.trials.map(function(t){return t.name}));
+            return r === null;
+        '''))
+        ok('computeEvidenceVelocity fn exists', d.execute_script(
+            'return typeof computeEvidenceVelocity === "function"'))
+        ok('evidence velocity returns stability', d.execute_script('''
+            var cfg = CONFIG_LIBRARY.colchicine_cvd;
+            var trackB = synthesizeTrackB(cfg.trials, "mace");
+            if (!trackB) return false;
+            var ev = computeEvidenceVelocity(trackB, cfg);
+            return ev !== null && ["STABLE","CONVERGING","EVOLVING","VOLATILE"].indexOf(ev.stability) >= 0;
+        '''))
+        ok('computeDecisionRegret fn exists', d.execute_script(
+            'return typeof computeDecisionRegret === "function"'))
+        ok('decision regret returns verdict', d.execute_script('''
+            var cfg = CONFIG_LIBRARY.colchicine_cvd;
+            var trackB = synthesizeTrackB(cfg.trials, "mace");
+            if (!trackB) return false;
+            var dr = computeDecisionRegret(trackB);
+            return dr !== null && dr.verdict && dr.pBenefit >= 0 && dr.pBenefit <= 1;
+        '''))
+        ok('computeCooksDistance fn exists', d.execute_script(
+            'return typeof computeCooksDistance === "function"'))
+        ok('cooks distance returns results', d.execute_script('''
+            var cfg = CONFIG_LIBRARY.colchicine_cvd;
+            var trackB = synthesizeTrackB(cfg.trials, "mace");
+            if (!trackB) return false;
+            var cd = computeCooksDistance(trackB.yi, trackB.vi, trackB.primary.tau2, trackB.trials.map(function(t){return t.name}));
+            return cd !== null && cd.results.length > 0 && cd.threshold > 0;
+        '''))
+        ok('computeClassifierMetrics fn exists', d.execute_script(
+            'return typeof computeClassifierMetrics === "function"'))
+        ok('threeLevelMAArea container exists', d.execute_script(
+            'return document.getElementById("threeLevelMAArea") !== null'))
+        ok('evidenceVelocityArea container exists', d.execute_script(
+            'return document.getElementById("evidenceVelocityArea") !== null'))
+        ok('decisionRegretArea container exists', d.execute_script(
+            'return document.getElementById("decisionRegretArea") !== null'))
+        ok('cooksDistanceArea container exists', d.execute_script(
+            'return document.getElementById("cooksDistanceArea") !== null'))
+
         # ─── Final: JS errors ───
         logs = d.get_log('browser')
         errors = [l for l in logs if l['level'] == 'SEVERE']
