@@ -146,7 +146,51 @@ def run_tests():
         ok('curated configs not marked', d.execute_script(
             'return CONFIG_LIBRARY.colchicine_cvd._dataQuality===undefined'))
 
-        # ─── 51: JS errors ───
+        # ─── 52-56: New features (NMA, Timeline, Harmonization, Data Quality, Methods Report) ───
+        ok('computeNMA fn exists', d.execute_script(
+            'return typeof computeNMA === "function"'))
+        # ATTR-CM has 3 drug classes — NMA should produce results using Track B (OR from events)
+        ok('NMA runs for ATTR-CM', d.execute_script('''
+            var cfg = CONFIG_LIBRARY.attr_cm;
+            var trackB = synthesizeTrackB(cfg.trials, "mace");
+            if (!trackB) return false;
+            var nma = computeNMA(trackB, cfg);
+            return nma !== null && nma.ranking.length >= 2;
+        '''))
+        ok('renderEvidenceTimeline fn exists', d.execute_script(
+            'return typeof renderEvidenceTimeline === "function"'))
+        ok('computeOutcomeHarmonization fn', d.execute_script(
+            'return typeof computeOutcomeHarmonization === "function"'))
+        ok('harmonization detects types', d.execute_script('''
+            var cfg = CONFIG_LIBRARY.colchicine_cvd;
+            var h = computeOutcomeHarmonization(cfg, "mace");
+            return h !== null && h.trialDefs.length > 0 && h.types.length >= 1;
+        '''))
+        ok('computeDataQuality fn', d.execute_script(
+            'return typeof computeDataQuality === "function"'))
+        ok('data quality scoring works', d.execute_script('''
+            var cfg = CONFIG_LIBRARY.colchicine_cvd;
+            var dq = computeDataQuality(cfg);
+            return dq !== null && dq.avgScore > 0 && dq.grade.length === 1;
+        '''))
+        ok('generateFullMethodsReport fn', d.execute_script(
+            'return typeof generateFullMethodsReport === "function"'))
+        ok('methods report generates text', d.execute_script('''
+            var report = generateFullMethodsReport();
+            return report !== null && report.length > 500 && report.includes("SYNTHESIS METHODS");
+        '''))
+        ok('NMA container exists in DOM', d.execute_script(
+            'return document.getElementById("nmaResultsArea") !== null'))
+        ok('timeline container exists', d.execute_script(
+            'return document.getElementById("evidenceTimelinePlot") !== null'))
+        ok('harmonization container exists', d.execute_script(
+            'return document.getElementById("harmonizationArea") !== null'))
+        ok('data quality container exists', d.execute_script(
+            'return document.getElementById("dataQualityArea") !== null'))
+        ok('methods report container exists', d.execute_script(
+            'return document.getElementById("methodsReportArea") !== null'))
+
+        # ─── Final: JS errors ───
         logs = d.get_log('browser')
         errors = [l for l in logs if l['level'] == 'SEVERE']
         ok('No JS errors', len(errors) == 0)

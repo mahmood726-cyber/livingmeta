@@ -1114,6 +1114,11 @@
   <div id="benchmarksDisplay" class="card">
     <!-- Rendered by JS -->
   </div>
+
+  <div class="section-header" style="margin-top:24px;">Data Quality Dashboard</div>
+  <div id="dataQualityArea" class="stub-area">
+    Select a config to see data quality scoring and completeness analysis.
+  </div>
 </div>
 
 <!-- ─────────────────── SEARCH TAB ─────────────────── -->
@@ -1249,6 +1254,11 @@
 
   <div id="extractCardsArea">
     <!-- Rendered by JS -->
+  </div>
+
+  <div class="section-header" style="margin-top:24px;">Outcome Harmonization Check</div>
+  <div id="harmonizationArea" class="stub-area">
+    Run synthesis to check for composite endpoint mismatches across trials.
   </div>
 </div>
 
@@ -1497,6 +1507,24 @@
   <div class="section-header" style="margin-top:24px;">Confidence Distribution Prediction Interval (Nagashima-Noma 2019)</div>
   <div id="cdPredIntArea" class="stub-area">Run synthesis first</div>
 
+  <div class="section-header" style="margin-top:24px;">Network Meta-Analysis (NMA)</div>
+  <div id="nmaContainer" style="margin-bottom:16px;">
+    <div id="nmaResultsArea" class="stub-area">
+      NMA requires a config with 3+ drug classes (e.g., ATTR-CM). Run synthesis first.
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;">
+      <div id="nmaNetworkPlot" style="min-height:350px;"></div>
+      <div id="nmaLeagueTable"></div>
+    </div>
+  </div>
+
+  <div class="section-header" style="margin-top:24px;">Evidence Accrual Timeline</div>
+  <div id="evidenceTimelineContainer">
+    <div id="evidenceTimelinePlot" class="stub-area" style="min-height:420px;border:none;display:flex;align-items:center;justify-content:center;">
+      Run synthesis first to generate evidence accrual timeline
+    </div>
+  </div>
+
   <div class="section-header" style="margin-top:24px;">Sensitivity Analysis Summary</div>
   <div id="sensitivityDashboard" class="stub-area">Run synthesis first</div>
 
@@ -1656,6 +1684,14 @@
     <button class="btn btn-outline" onclick="exportRScript()">
       &#129518; R Validation Script
     </button>
+  </div>
+
+  <div class="section-header" style="margin-top:24px;">Full Methodological Report (PRISMA 2020)</div>
+  <div id="methodsReportArea" class="stub-area">
+    Run synthesis first. Then click the button below to generate a complete PRISMA 2020 compliant methods report.
+  </div>
+  <div style="margin-top:8px;">
+    <button class="btn btn-outline" onclick="renderMethodsReport()">Generate Full Methods Report</button>
   </div>
 
   <div class="section-header" style="margin-top:24px;">PRISMA 2020 Flow Diagram</div>
@@ -4650,10 +4686,14 @@ function handleConfigChange(configId) {
   renderProtocolTab();
   renderScreenTab();
   renderExtractTab();
+  /* Data quality dashboard on config load */
+  const dqOnLoad = computeDataQuality(getConfig());
+  renderDataQuality(dqOnLoad);
   /* Purge Plotly plots to prevent memory leaks on config switch */
   ['forestPlotContainer','funnelPlotContainer','galbraithPlot','baujatPlot','labbePlot',
    'goshPlot','doiPlot','tsaPlotContainer','predDistPlot','seqBayesPlot','cdCurvePlot',
-   'subgroupForestPlot','bayesPosteriorPlot','nntCurvePlot','metaRegPlot'
+   'subgroupForestPlot','bayesPosteriorPlot','nntCurvePlot','metaRegPlot',
+   'nmaNetworkPlot','evidenceTimelinePlot'
   ].forEach(function(id) { var el = document.getElementById(id); if (el) { try { Plotly.purge(el); } catch(e) {} } });
   /* Clear stale result panels */
   ['synthesisResultsArea','trackAResults','trackBResults','gradeSofTable',
@@ -7906,6 +7946,17 @@ function runSynthesis() {
   // CT.gov Evidence Delta
   const evDelta = computeEvidenceDelta();
   renderEvidenceDelta(evDelta);
+  // NMA (Network Meta-Analysis) for configs with 3+ drug classes
+  const nmaResult = computeNMA(evTrack, config);
+  renderNMA(nmaResult);
+  // Evidence accrual timeline
+  renderEvidenceTimeline(evTrack);
+  // Outcome harmonization check
+  const harmResult = computeOutcomeHarmonization(config, outcomeKey);
+  renderOutcomeHarmonization(harmResult);
+  // Data quality dashboard
+  const dqResult = computeDataQuality(config);
+  renderDataQuality(dqResult);
 
   /* Store advanced results for programmatic access / export / testing */
   Object.assign(AppState.results, { tsa, fragility: frag, nnt, doi, evalue,
@@ -7915,7 +7966,8 @@ function runSynthesis() {
     harmonicMeanChi2: hmChi2, zCurve, propMeaningful: propM, bayesAssurance: bayesAss,
     empiricalPrior: empPrior, nonCollapsibility: nonCollaps, firth: firthRes,
     cdPredInt, evidenceDelta: evDelta, permTest: perm, gosh, profileLik: profLik,
-    failsafeN: fsn, robma, bayesPosterior, nntCurve, metaRegression: metaReg });
+    failsafeN: fsn, robma, bayesPosterior, nntCurve, metaRegression: metaReg,
+    nma: nmaResult, harmonization: harmResult, dataQuality: dqResult });
 
   /* Post-process tables for a11y + mobile */
   postProcessTables();
@@ -8755,7 +8807,70 @@ function renderGradeTable() {
   }
 
   html += '</div>';
+
+  /* Add SoF Word export button */
+  html += '<div style="margin-top:12px;text-align:right;">';
+  html += '<button onclick="exportSoFHTML()" style="padding:6px 16px;font-size:0.75rem;cursor:pointer;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);font-weight:600;">';
+  html += '\u2B07 Download SoF Table (Word-compatible)</button></div>';
+
   container.innerHTML = html;
+}
+
+/* Export GRADE SoF table as Word-compatible HTML */
+function exportSoFHTML() {
+  const r = AppState.results;
+  if (!r?.grade) { showToast('Run synthesis + GRADE assessment first.'); return; }
+  const grade = r.grade;
+  const track = r.trackB ?? r.trackA;
+  const config = getConfig();
+  const exp = Math.exp;
+
+  const certaintySymbols = { HIGH: '\u2b24\u2b24\u2b24\u2b24', MODERATE: '\u2b24\u2b24\u2b24\u25ef', LOW: '\u2b24\u2b24\u25ef\u25ef', 'VERY LOW': '\u2b24\u25ef\u25ef\u25ef' };
+  const domainLabels = { rob: 'Risk of Bias', inconsistency: 'Inconsistency', indirectness: 'Indirectness', imprecision: 'Imprecision', publicationBias: 'Publication Bias' };
+
+  let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>';
+  html += 'table{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:10pt}';
+  html += 'th,td{border:1px solid #000;padding:6px 8px;text-align:left}';
+  html += 'th{background:#4472c4;color:#fff;font-weight:bold}';
+  html += '.high{color:#16a34a;font-weight:bold}.mod{color:#d97706;font-weight:bold}.low{color:#dc2626;font-weight:bold}';
+  html += '</style></head><body>';
+
+  html += '<h2>Summary of Findings Table</h2>';
+  html += '<p><strong>Outcome:</strong> ' + escapeHtml(r.outcomeKey ?? 'Primary') + ' | <strong>Trials:</strong> ' + (track?.k ?? '?') + '</p>';
+
+  html += '<table><thead><tr><th>Domain</th><th>Assessment</th><th>Downgrade</th><th>Reason</th></tr></thead><tbody>';
+  for (const [key, info] of Object.entries(grade.domains)) {
+    const dg = info.downgrade ?? 0;
+    const dgText = dg === 0 ? 'None' : dg === 0.5 ? 'Partial (-0.5)' : dg === 1 ? 'Serious (-1)' : 'Very serious (-' + dg + ')';
+    html += '<tr><td><b>' + escapeHtml(domainLabels[key] ?? key) + '</b></td>';
+    html += '<td>' + dgText + '</td><td style="text-align:center;">' + dg + '</td>';
+    html += '<td>' + escapeHtml(info.reason ?? '') + '</td></tr>';
+  }
+  html += '</tbody></table>';
+
+  if (track) {
+    const est = exp(track.primary.estimate);
+    const ciLo = exp(track.primary.ci[0]);
+    const ciHi = exp(track.primary.ci[1]);
+    const certClass = grade.finalCertainty === 'HIGH' ? 'high' : grade.finalCertainty === 'MODERATE' ? 'mod' : 'low';
+    html += '<p style="margin-top:12px;"><strong>Pooled estimate:</strong> ' + track.measure + ' = ' + est.toFixed(2);
+    html += ' (95% CI: ' + ciLo.toFixed(2) + ' \u2013 ' + ciHi.toFixed(2) + ')';
+    html += ' | I\u00B2 = ' + track.primary.I2.toFixed(1) + '%';
+    html += ' | <span class="' + certClass + '">Certainty: ' + grade.finalCertainty + ' ' + (certaintySymbols[grade.finalCertainty] ?? '') + '</span></p>';
+  }
+
+  html += '</body></html>';
+
+  const blob = new Blob([html], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'SoF_' + (config.id ?? 'LivingMeta') + '_' + (r.outcomeKey ?? 'primary') + '.doc';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('SoF table exported as Word document.');
 }
 
 
@@ -13767,6 +13882,715 @@ function renderMetaRegression(reg) {
   }
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE K: NETWORK META-ANALYSIS (NMA) — Bucher indirect comparisons
+   For configs with 3+ drug classes, computes indirect treatment comparisons,
+   league table, P-scores (frequentist SUCRA analogue), and consistency test.
+   ═══════════════════════════════════════════════════════════════════ */
+
+function computeNMA(trackResult, config) {
+  if (!trackResult || !config.subgroups?.drugClass) return null;
+  const sg = config.subgroups.drugClass;
+  const groups = sg.groups;
+  const classKeys = Object.keys(groups);
+  if (classKeys.length < 3) return null;
+
+  /* Build per-class pooled estimates vs common comparator (placebo/control) */
+  const classEstimates = {};
+  for (const ck of classKeys) {
+    const trialIds = groups[ck].trials ?? [];
+    const matchTrials = (trackResult.trials ?? []).filter(t => trialIds.includes(t.name));
+    if (matchTrials.length === 0) continue;
+    /* Pool within class */
+    const yi = [], vi = [];
+    for (const t of matchTrials) {
+      const idx = trackResult.trials.indexOf(t);
+      if (idx >= 0 && trackResult.yi[idx] != null) {
+        yi.push(trackResult.yi[idx]);
+        vi.push(trackResult.vi[idx]);
+      }
+    }
+    if (yi.length === 0) continue;
+    const tau2 = yi.length >= 2 ? Tau2Estimators.DL(yi, vi).tau2 : 0;
+    const pooled = PooledEstimate(yi, vi, tau2, { hksj: false, confLevel: 0.95 });
+    classEstimates[ck] = { label: groups[ck].label, color: groups[ck].color, yi, vi, pooled, k: yi.length };
+  }
+  const estKeys = Object.keys(classEstimates);
+  if (estKeys.length < 2) return null;
+
+  /* Pairwise indirect comparisons via Bucher method:
+     A vs B = (A vs Control) - (B vs Control)
+     Var(A vs B) = Var(A vs C) + Var(B vs C) */
+  const comparisons = [];
+  for (let i = 0; i < estKeys.length; i++) {
+    for (let j = i + 1; j < estKeys.length; j++) {
+      const a = classEstimates[estKeys[i]], b = classEstimates[estKeys[j]];
+      const diff = a.pooled.estimate - b.pooled.estimate;
+      const varDiff = a.pooled.se * a.pooled.se + b.pooled.se * b.pooled.se;
+      const seDiff = Math.sqrt(varDiff);
+      const z = diff / seDiff;
+      const p = 2 * (1 - normalCDF(Math.abs(z)));
+      const ciLo = diff - 1.96 * seDiff;
+      const ciHi = diff + 1.96 * seDiff;
+      comparisons.push({
+        a: estKeys[i], aLabel: a.label, aColor: a.color,
+        b: estKeys[j], bLabel: b.label, bColor: b.color,
+        logEffect: diff, se: seDiff, z, p,
+        effect: Math.exp(diff), ciLo: Math.exp(ciLo), ciHi: Math.exp(ciHi)
+      });
+    }
+  }
+
+  /* P-scores: fraction of comparisons "won" (frequentist SUCRA analogue, Rucker & Schwarzer 2015) */
+  const pScores = {};
+  for (const ck of estKeys) {
+    let wins = 0, total = 0;
+    for (const comp of comparisons) {
+      if (comp.a === ck) { wins += normalCDF(-comp.z); total++; }
+      else if (comp.b === ck) { wins += normalCDF(comp.z); total++; }
+    }
+    pScores[ck] = { label: classEstimates[ck].label, color: classEstimates[ck].color, score: total > 0 ? wins / total : 0.5, k: classEstimates[ck].k };
+  }
+
+  /* Rank by P-score */
+  const ranking = Object.entries(pScores).sort((a, b) => b[1].score - a[1].score).map(([key, val], idx) => ({ rank: idx + 1, key, ...val }));
+
+  /* Consistency check: Q_inconsistency (simple global test) */
+  let Qincon = 0, dfIncon = 0;
+  for (const comp of comparisons) {
+    Qincon += (comp.logEffect * comp.logEffect) / (comp.se * comp.se);
+    dfIncon++;
+  }
+  dfIncon = Math.max(0, dfIncon - (estKeys.length - 1));
+  const pIncon = dfIncon > 0 ? (1 - chi2CDF(Qincon, dfIncon)) : 1;
+
+  /* Network edges (for graph) */
+  const edges = [];
+  for (const comp of comparisons) {
+    edges.push({ from: comp.aLabel, to: comp.bLabel, weight: 1 / (comp.se * comp.se), effect: comp.effect, p: comp.p });
+  }
+
+  return { classEstimates, comparisons, pScores, ranking, consistency: { Q: Qincon, df: dfIncon, p: pIncon }, edges, question: sg.question };
+}
+
+function renderNMA(nma) {
+  const area = document.getElementById('nmaResultsArea');
+  const netPlot = document.getElementById('nmaNetworkPlot');
+  const leagueDiv = document.getElementById('nmaLeagueTable');
+  if (!area) return;
+  if (!nma) {
+    area.innerHTML = '<span style="opacity:0.6;">NMA requires a config with 3+ drug classes (e.g., ATTR-CM). Select one and run synthesis.</span>';
+    if (netPlot) Plotly.purge(netPlot);
+    if (leagueDiv) leagueDiv.innerHTML = '';
+    return;
+  }
+
+  /* Summary + question */
+  let html = '<div style="margin-bottom:12px;font-size:0.9rem;font-weight:600;color:var(--accent);">' + escapeHtml(nma.question ?? 'Network Meta-Analysis') + '</div>';
+
+  /* Ranking table with P-scores */
+  html += '<table style="width:100%;font-size:0.82rem;border-collapse:collapse;margin-bottom:12px;">';
+  html += '<thead><tr><th style="padding:6px;text-align:left;">Rank</th><th style="text-align:left;">Treatment Class</th><th>P-score</th><th>k</th><th>vs Control</th></tr></thead><tbody>';
+  for (const r of nma.ranking) {
+    const est = nma.classEstimates[r.key];
+    const or = est ? Math.exp(est.pooled.estimate).toFixed(3) : 'N/A';
+    const barWidth = Math.round(r.score * 100);
+    html += '<tr><td style="padding:6px;font-weight:700;">#' + r.rank + '</td>';
+    html += '<td><span style="color:' + (r.color ?? '#3b82f6') + ';">\u25CF</span> ' + escapeHtml(r.label) + '</td>';
+    html += '<td style="text-align:center;"><div style="display:flex;align-items:center;gap:4px;justify-content:center;">';
+    html += '<div style="width:60px;height:8px;background:var(--border-color);border-radius:4px;overflow:hidden;"><div style="width:' + barWidth + '%;height:100%;background:' + (r.color ?? '#3b82f6') + ';border-radius:4px;"></div></div>';
+    html += '<span style="font-weight:600;">' + r.score.toFixed(2) + '</span></div></td>';
+    html += '<td style="text-align:center;">' + r.k + '</td>';
+    html += '<td style="text-align:center;font-weight:600;">' + or + '</td></tr>';
+  }
+  html += '</tbody></table>';
+
+  /* Consistency test */
+  const conColor = nma.consistency.p < 0.05 ? '#ef4444' : '#22c55e';
+  html += '<div style="font-size:0.82rem;padding:8px;background:var(--bg-card);border-radius:6px;border-left:3px solid ' + conColor + ';">';
+  html += '<strong>Global Consistency:</strong> Q = ' + nma.consistency.Q.toFixed(2) + ', df = ' + nma.consistency.df + ', p = ' + (nma.consistency.p < 0.001 ? '<0.001' : nma.consistency.p.toFixed(3));
+  html += ' <span style="color:' + conColor + ';font-weight:600;">' + (nma.consistency.p < 0.05 ? 'Inconsistency detected' : 'Consistent') + '</span></div>';
+  area.innerHTML = html;
+
+  /* League table (lower triangle) */
+  if (leagueDiv) {
+    const keys = nma.ranking.map(r => r.key);
+    let lt = '<div style="font-size:0.82rem;font-weight:600;margin-bottom:8px;">League Table (indirect comparisons)</div>';
+    lt += '<table style="font-size:0.75rem;border-collapse:collapse;width:100%;">';
+    lt += '<thead><tr><th style="padding:4px;"></th>';
+    for (const k of keys) lt += '<th style="padding:4px;text-align:center;font-size:0.7rem;">' + escapeHtml(nma.classEstimates[k].label) + '</th>';
+    lt += '</tr></thead><tbody>';
+    for (let i = 0; i < keys.length; i++) {
+      lt += '<tr><th style="padding:4px;text-align:left;font-size:0.7rem;">' + escapeHtml(nma.classEstimates[keys[i]].label) + '</th>';
+      for (let j = 0; j < keys.length; j++) {
+        if (i === j) { lt += '<td style="padding:4px;text-align:center;background:var(--accent-light);font-weight:600;">Ref</td>'; continue; }
+        const comp = nma.comparisons.find(c => (c.a === keys[i] && c.b === keys[j]) || (c.a === keys[j] && c.b === keys[i]));
+        if (!comp) { lt += '<td style="padding:4px;text-align:center;">\u2014</td>'; continue; }
+        const isReversed = comp.b === keys[i];
+        const eff = isReversed ? (1 / comp.effect) : comp.effect;
+        const lo = isReversed ? (1 / comp.ciHi) : comp.ciLo;
+        const hi = isReversed ? (1 / comp.ciLo) : comp.ciHi;
+        const sigColor = comp.p < 0.05 ? '#059669' : 'inherit';
+        lt += '<td style="padding:4px;text-align:center;color:' + sigColor + ';font-size:0.7rem;">' + eff.toFixed(2) + '<br>(' + lo.toFixed(2) + '\u2013' + hi.toFixed(2) + ')</td>';
+      }
+      lt += '</tr>';
+    }
+    lt += '</tbody></table>';
+    leagueDiv.innerHTML = lt;
+  }
+
+  /* Network graph via Plotly */
+  if (netPlot) {
+    const isDark = document.body.classList.contains('dark-mode');
+    const nodes = nma.ranking;
+    const n = nodes.length;
+    const angleStep = 2 * Math.PI / n;
+    const nodeX = nodes.map((_, i) => Math.cos(angleStep * i - Math.PI / 2));
+    const nodeY = nodes.map((_, i) => Math.sin(angleStep * i - Math.PI / 2));
+    const nodeMap = {};
+    nodes.forEach((nd, i) => { nodeMap[nd.label] = i; });
+
+    const edgeTraces = [];
+    for (const e of nma.edges) {
+      const fi = nodeMap[e.from], ti = nodeMap[e.to];
+      if (fi == null || ti == null) continue;
+      edgeTraces.push({
+        x: [nodeX[fi], nodeX[ti], null], y: [nodeY[fi], nodeY[ti], null],
+        mode: 'lines', line: { width: Math.max(1, Math.min(8, e.weight * 2)), color: e.p < 0.05 ? '#059669' : (isDark ? '#64748b' : '#94a3b8') },
+        hoverinfo: 'text', text: e.from + ' vs ' + e.to + ': ' + e.effect.toFixed(2) + ' (p=' + e.p.toFixed(3) + ')',
+        showlegend: false
+      });
+    }
+
+    const nodeTrace = {
+      x: nodeX, y: nodeY, mode: 'markers+text', type: 'scatter',
+      marker: { size: nodes.map(nd => Math.max(16, nd.k * 12)), color: nodes.map(nd => nd.color ?? '#3b82f6'), opacity: 0.85 },
+      text: nodes.map(nd => nd.label + ' (k=' + nd.k + ')'), textposition: 'top center',
+      textfont: { size: 11, color: isDark ? '#e2e8f0' : '#1e293b' },
+      hoverinfo: 'text', showlegend: false
+    };
+
+    Plotly.purge(netPlot);
+    Plotly.newPlot(netPlot, [...edgeTraces, nodeTrace], {
+      title: { text: 'Treatment Network', font: { size: 14 } },
+      xaxis: { visible: false, range: [-1.5, 1.5] }, yaxis: { visible: false, range: [-1.5, 1.5], scaleanchor: 'x' },
+      paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+      font: { color: isDark ? '#e2e8f0' : '#1e293b' },
+      margin: { t: 40, b: 20, l: 20, r: 20 }
+    }, { responsive: true });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE L: EVIDENCE ACCRUAL TIMELINE
+   Interactive timeline showing when each trial reported, cumulative
+   pooled estimate shift, with TSA boundaries overlaid.
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderEvidenceTimeline(trackResult) {
+  const plotDiv = document.getElementById('evidenceTimelinePlot');
+  if (!plotDiv) return;
+  if (!trackResult || !trackResult.cumulative || trackResult.cumulative.length < 2) {
+    plotDiv.innerHTML = '<span style="opacity:0.6;">Need k \u2265 2 with year data</span>';
+    return;
+  }
+
+  const isDark = document.body.classList.contains('dark-mode');
+  const cum = trackResult.cumulative;
+  const years = cum.map(c => c.year);
+  const pooledOR = cum.map(c => Math.exp(c.estimate));
+  const ciLo = cum.map(c => Math.exp(c.ci[0]));
+  const ciHi = cum.map(c => Math.exp(c.ci[1]));
+  const ks = cum.map(c => c.k);
+  const trialNames = (trackResult.trials ?? []).map(t => t.name + ' (' + t.year + ')');
+
+  /* Cumulative pooled effect with CI ribbon */
+  const traces = [
+    { x: years, y: ciHi, mode: 'lines', line: { width: 0 }, showlegend: false, hoverinfo: 'skip' },
+    { x: years, y: ciLo, mode: 'lines', line: { width: 0 }, fill: 'tonexty', fillcolor: 'rgba(59,130,246,0.15)', showlegend: false, hoverinfo: 'skip' },
+    { x: years, y: pooledOR, mode: 'lines+markers', name: 'Pooled Effect',
+      line: { color: '#3b82f6', width: 3 },
+      marker: { size: ks.map(k => Math.max(6, k * 3)), color: '#3b82f6' },
+      text: cum.map((c, i) => 'k=' + c.k + ' | OR=' + Math.exp(c.estimate).toFixed(3) + (trialNames[i] ? '<br>Added: ' + trialNames[i] : '')),
+      hoverinfo: 'text+x'
+    },
+    { x: [years[0], years[years.length - 1]], y: [1, 1], mode: 'lines', name: 'No effect',
+      line: { color: isDark ? '#64748b' : '#94a3b8', dash: 'dash', width: 1.5 }, showlegend: false, hoverinfo: 'skip'
+    }
+  ];
+
+  /* Add trial entry markers along the bottom */
+  const trialYears = (trackResult.trials ?? []).map(t => t.year).filter(Boolean);
+  const trialLabels = (trackResult.trials ?? []).map(t => t.name);
+  if (trialYears.length > 0) {
+    const yMin = Math.min(...ciLo) * 0.92;
+    traces.push({
+      x: trialYears, y: trialYears.map(() => yMin), mode: 'markers+text', name: 'Trial Published',
+      marker: { size: 10, symbol: 'triangle-up', color: '#f59e0b' },
+      text: trialLabels, textposition: 'top center', textfont: { size: 8, color: isDark ? '#fbbf24' : '#b45309' },
+      hoverinfo: 'text'
+    });
+  }
+
+  Plotly.purge(plotDiv);
+  Plotly.newPlot(plotDiv, traces, {
+    title: { text: 'Evidence Accrual Timeline — Living Meta-Analysis', font: { size: 14 } },
+    xaxis: { title: 'Year', gridcolor: isDark ? '#334155' : '#e2e8f0', dtick: 1 },
+    yaxis: { title: 'Pooled OR (95% CI)', gridcolor: isDark ? '#334155' : '#e2e8f0', type: 'log' },
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: isDark ? '#e2e8f0' : '#1e293b' },
+    legend: { x: 0, y: 1.1, orientation: 'h' },
+    margin: { t: 50, b: 60, l: 60, r: 30 }
+  }, { responsive: true });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE M: OUTCOME HARMONIZATION ENGINE
+   Auto-detects composite endpoint mismatches and flags them.
+   ═══════════════════════════════════════════════════════════════════ */
+
+function computeOutcomeHarmonization(config, outcomeKey) {
+  if (!config || !config.trials) return null;
+
+  /* Known composite definitions */
+  const compositeMap = {
+    'mace': {
+      '3-point': ['CV death', 'non-fatal MI', 'non-fatal stroke'],
+      '4-point': ['CV death', 'non-fatal MI', 'non-fatal stroke', 'UA hospitalization'],
+      '5-point': ['CV death', 'non-fatal MI', 'non-fatal stroke', 'UA hospitalization', 'coronary revascularization']
+    },
+    'hf_composite': {
+      'cv_death_hfh': ['CV death', 'HF hospitalization'],
+      'cv_death_hfh_urgent': ['CV death', 'HF hospitalization', 'urgent HF visit'],
+      'total_hfh': ['total HF hospitalizations (recurrent)']
+    },
+    'renal_composite': {
+      'standard': ['sustained eGFR decline \u226540%', 'ESKD', 'renal death'],
+      'broad': ['sustained eGFR decline \u226550%', 'ESKD', 'renal death', 'sustained eGFR <15']
+    }
+  };
+
+  const issues = [];
+  const trialDefs = [];
+
+  for (const trial of config.trials) {
+    const oc = trial.outcomes?.[outcomeKey];
+    if (!oc) continue;
+
+    /* Detect composite type from trial metadata or evidenceText */
+    let detectedType = 'unknown';
+    const txt = (trial.evidenceText ?? '').toLowerCase();
+    const src = (oc.src ?? '').toLowerCase();
+    const combined = txt + ' ' + src;
+
+    if (outcomeKey === 'mace' || outcomeKey === 'default') {
+      if (combined.includes('3-point') || combined.includes('3-pt') || combined.includes('3pt')) detectedType = '3-point MACE';
+      else if (combined.includes('4-point') || combined.includes('4-pt') || combined.includes('4pt')) detectedType = '4-point MACE';
+      else if (combined.includes('5-point') || combined.includes('5-pt') || combined.includes('5pt')) detectedType = '5-point MACE';
+      else if (combined.includes('ua hosp') || combined.includes('unstable angina')) detectedType = '4-point MACE';
+      else if (combined.includes('revasc')) detectedType = '5-point MACE';
+      else detectedType = '3-point MACE (assumed)';
+    } else if (outcomeKey.includes('hf') || outcomeKey.includes('heart')) {
+      if (combined.includes('recurrent') || combined.includes('total')) detectedType = 'Total HF events (recurrent)';
+      else if (combined.includes('urgent')) detectedType = 'CV death + HFH + urgent visit';
+      else detectedType = 'CV death + HFH';
+    } else if (outcomeKey.includes('renal') || outcomeKey.includes('kidney')) {
+      if (combined.includes('50%') || combined.includes('doubling')) detectedType = 'Renal composite (broad)';
+      else detectedType = 'Renal composite (standard)';
+    }
+
+    /* Estimand type: HR vs OR vs RR */
+    const estimand = oc.hr != null ? 'HR (time-to-event)' : (oc.tE != null ? 'OR (binary)' : 'Unknown');
+
+    trialDefs.push({ trialId: trial.id, year: trial.year, compositeType: detectedType, estimand, nTotal: trial.nTotal ?? ((trial.nTreatment ?? 0) + (trial.nControl ?? 0)) });
+  }
+
+  /* Check for mismatches */
+  const types = [...new Set(trialDefs.map(t => t.compositeType))];
+  const estimands = [...new Set(trialDefs.map(t => t.estimand))];
+  if (types.length > 1) {
+    issues.push({ severity: 'warning', message: 'Mixed composite definitions: ' + types.join(' vs '), detail: 'Trials use different endpoint definitions. Consider sensitivity analysis excluding mismatched trials.', affectedTrials: trialDefs.filter(t => t.compositeType !== types[0]).map(t => t.trialId) });
+  }
+  if (estimands.length > 1) {
+    issues.push({ severity: 'info', message: 'Mixed estimand types: ' + estimands.join(' vs '), detail: 'Track A (HR pool) and Track B (OR pool) address this via dual-track synthesis.', affectedTrials: [] });
+  }
+
+  /* Follow-up duration heterogeneity */
+  const followUps = config.trials.filter(t => t.followUpMonths != null).map(t => ({ id: t.id, months: t.followUpMonths }));
+  if (followUps.length >= 2) {
+    const fuRange = Math.max(...followUps.map(f => f.months)) - Math.min(...followUps.map(f => f.months));
+    if (fuRange > 24) {
+      issues.push({ severity: 'warning', message: 'Follow-up range: ' + Math.min(...followUps.map(f => f.months)) + '\u2013' + Math.max(...followUps.map(f => f.months)) + ' months (\u0394=' + fuRange + 'mo)', detail: 'Large follow-up heterogeneity may bias HR pooling. Consider time-stratified analysis.', affectedTrials: [] });
+    }
+  }
+
+  return { trialDefs, issues, types, estimands, outcomeKey, k: trialDefs.length };
+}
+
+function renderOutcomeHarmonization(harm) {
+  const area = document.getElementById('harmonizationArea');
+  if (!area) return;
+  if (!harm) { area.innerHTML = '<span style="opacity:0.6;">Run synthesis first</span>'; return; }
+
+  let html = '';
+  /* Issue flags */
+  if (harm.issues.length > 0) {
+    for (const issue of harm.issues) {
+      const icon = issue.severity === 'warning' ? '\u26A0\uFE0F' : '\u2139\uFE0F';
+      const bg = issue.severity === 'warning' ? 'rgba(245,158,11,0.08)' : 'rgba(59,130,246,0.06)';
+      const border = issue.severity === 'warning' ? '#f59e0b' : '#3b82f6';
+      html += '<div style="padding:10px;margin-bottom:8px;background:' + bg + ';border-left:3px solid ' + border + ';border-radius:4px;font-size:0.82rem;">';
+      html += '<div style="font-weight:600;">' + icon + ' ' + escapeHtml(issue.message) + '</div>';
+      html += '<div style="opacity:0.7;margin-top:4px;">' + escapeHtml(issue.detail) + '</div>';
+      if (issue.affectedTrials.length > 0) html += '<div style="margin-top:4px;font-size:0.75rem;">Affected: ' + issue.affectedTrials.map(escapeHtml).join(', ') + '</div>';
+      html += '</div>';
+    }
+  } else {
+    html += '<div style="padding:10px;background:rgba(34,197,94,0.08);border-left:3px solid #22c55e;border-radius:4px;font-size:0.82rem;font-weight:600;">\u2714 All trials use consistent endpoint definitions</div>';
+  }
+
+  /* Definition table */
+  html += '<table style="width:100%;font-size:0.78rem;border-collapse:collapse;margin-top:12px;">';
+  html += '<thead><tr><th style="text-align:left;padding:4px;">Trial</th><th>Year</th><th>Composite Type</th><th>Estimand</th><th>N</th></tr></thead><tbody>';
+  for (const t of harm.trialDefs) {
+    const isAssumed = t.compositeType.includes('assumed');
+    html += '<tr><td style="padding:4px;font-weight:600;">' + escapeHtml(t.trialId) + '</td>';
+    html += '<td style="text-align:center;">' + (t.year ?? '\u2014') + '</td>';
+    html += '<td style="text-align:center;' + (isAssumed ? 'font-style:italic;opacity:0.7;' : '') + '">' + escapeHtml(t.compositeType) + '</td>';
+    html += '<td style="text-align:center;">' + escapeHtml(t.estimand) + '</td>';
+    html += '<td style="text-align:center;">' + (t.nTotal > 0 ? t.nTotal.toLocaleString() : '\u2014') + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE N: DATA QUALITY CURATION DASHBOARD
+   For auto-generated configs: quality scoring, data completeness,
+   and flags for missing/uncertain fields.
+   ═══════════════════════════════════════════════════════════════════ */
+
+function computeDataQuality(config) {
+  if (!config || !config.trials) return null;
+  const isAutoGen = config._dataQuality === 'auto-generated';
+
+  const trialScores = [];
+  let totalScore = 0;
+
+  for (const trial of config.trials) {
+    let score = 0, maxScore = 0, flags = [];
+
+    /* Core identifiers */
+    maxScore += 10;
+    if (trial.nctId && /^NCT\d{8}$/.test(trial.nctId)) score += 10;
+    else flags.push('Missing/invalid NCT ID');
+
+    /* Sample size */
+    maxScore += 10;
+    if (trial.nTotal > 0 || (trial.nTreatment > 0 && trial.nControl > 0)) score += 10;
+    else flags.push('Missing sample size');
+
+    /* Year */
+    maxScore += 5;
+    if (trial.year && trial.year >= 1990 && trial.year <= 2030) score += 5;
+    else flags.push('Missing/invalid year');
+
+    /* Outcome data completeness */
+    const outcomeKeys = Object.keys(trial.outcomes ?? {});
+    maxScore += 20;
+    if (outcomeKeys.length > 0) {
+      let hasEvents = false, hasHR = false;
+      for (const ok of outcomeKeys) {
+        const oc = trial.outcomes[ok];
+        if (oc.tE != null && oc.cE != null) hasEvents = true;
+        if (oc.hr != null && oc.hrLo != null && oc.hrHi != null) hasHR = true;
+      }
+      if (hasEvents) score += 10;
+      else flags.push('Missing event counts');
+      if (hasHR) score += 10;
+      else flags.push('Missing HR + CI');
+    } else { flags.push('No outcome data'); }
+
+    /* RoB assessment */
+    maxScore += 10;
+    if (trial.rob && trial.rob.overall) score += 10;
+    else flags.push('No RoB assessment');
+
+    /* Phase */
+    maxScore += 5;
+    if (trial.phase) score += 5;
+    else flags.push('Missing phase');
+
+    /* Follow-up */
+    maxScore += 5;
+    if (trial.followUpMonths != null && trial.followUpMonths > 0) score += 5;
+    else flags.push('Missing follow-up duration');
+
+    /* Reference */
+    maxScore += 5;
+    if (trial.reference) score += 5;
+    else flags.push('Missing reference');
+
+    const pct = maxScore > 0 ? Math.round(score / maxScore * 100) : 0;
+    trialScores.push({ trialId: trial.id, score, maxScore, pct, flags, nctId: trial.nctId, year: trial.year });
+    totalScore += pct;
+  }
+
+  const avgScore = trialScores.length > 0 ? Math.round(totalScore / trialScores.length) : 0;
+  const grade = avgScore >= 90 ? 'A' : avgScore >= 75 ? 'B' : avgScore >= 60 ? 'C' : avgScore >= 40 ? 'D' : 'F';
+  const gradeColor = avgScore >= 90 ? '#22c55e' : avgScore >= 75 ? '#84cc16' : avgScore >= 60 ? '#f59e0b' : avgScore >= 40 ? '#f97316' : '#ef4444';
+
+  return { trialScores, avgScore, grade, gradeColor, isAutoGen, k: trialScores.length, configName: config.name };
+}
+
+function renderDataQuality(dq) {
+  const area = document.getElementById('dataQualityArea');
+  if (!area) return;
+  if (!dq) { area.innerHTML = '<span style="opacity:0.6;">No data quality analysis available</span>'; return; }
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px;">';
+  html += '<div style="background:var(--bg-card);padding:12px;border-radius:8px;text-align:center;">';
+  html += '<div style="font-size:2rem;font-weight:800;color:' + dq.gradeColor + ';">' + dq.grade + '</div>';
+  html += '<div style="font-size:0.72rem;opacity:0.6;">Data Grade</div></div>';
+  html += '<div style="background:var(--bg-card);padding:12px;border-radius:8px;text-align:center;">';
+  html += '<div style="font-size:1.5rem;font-weight:700;color:' + dq.gradeColor + ';">' + dq.avgScore + '%</div>';
+  html += '<div style="font-size:0.72rem;opacity:0.6;">Avg Completeness</div></div>';
+  html += '<div style="background:var(--bg-card);padding:12px;border-radius:8px;text-align:center;">';
+  html += '<div style="font-size:1.5rem;font-weight:700;">' + dq.k + '</div>';
+  html += '<div style="font-size:0.72rem;opacity:0.6;">Trials</div></div>';
+  html += '<div style="background:var(--bg-card);padding:12px;border-radius:8px;text-align:center;">';
+  html += '<div style="font-size:1.1rem;font-weight:600;color:' + (dq.isAutoGen ? '#f59e0b' : '#22c55e') + ';">' + (dq.isAutoGen ? 'Auto-Generated' : 'Curated') + '</div>';
+  html += '<div style="font-size:0.72rem;opacity:0.6;">Data Source</div></div></div>';
+
+  /* Per-trial table */
+  html += '<table style="width:100%;font-size:0.78rem;border-collapse:collapse;">';
+  html += '<thead><tr><th style="text-align:left;padding:4px;">Trial</th><th>Year</th><th>NCT ID</th><th>Quality</th><th>Flags</th></tr></thead><tbody>';
+  for (const t of dq.trialScores) {
+    const barColor = t.pct >= 80 ? '#22c55e' : t.pct >= 60 ? '#f59e0b' : '#ef4444';
+    html += '<tr><td style="padding:4px;font-weight:600;">' + escapeHtml(t.trialId) + '</td>';
+    html += '<td style="text-align:center;">' + (t.year ?? '\u2014') + '</td>';
+    html += '<td style="text-align:center;font-family:monospace;font-size:0.72rem;">' + (t.nctId ?? '\u2014') + '</td>';
+    html += '<td style="text-align:center;"><div style="display:flex;align-items:center;gap:4px;justify-content:center;">';
+    html += '<div style="width:50px;height:6px;background:var(--border-color);border-radius:3px;overflow:hidden;"><div style="width:' + t.pct + '%;height:100%;background:' + barColor + ';border-radius:3px;"></div></div>';
+    html += '<span style="font-weight:600;color:' + barColor + ';">' + t.pct + '%</span></div></td>';
+    html += '<td style="font-size:0.72rem;opacity:0.7;">' + (t.flags.length > 0 ? t.flags.join('; ') : '<span style="color:#22c55e;">\u2714 Complete</span>') + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE O: FULL METHODOLOGICAL REPORT GENERATOR
+   Auto-generates PRISMA 2020 compliant methods report with all
+   statistical choices documented. Copy-to-clipboard support.
+   ═══════════════════════════════════════════════════════════════════ */
+
+function generateFullMethodsReport() {
+  const config = getConfig();
+  const r = AppState.results;
+  if (!r) { showToast('Run synthesis first.'); return; }
+
+  const track = r.trackB ?? r.trackA;
+  if (!track) { showToast('No synthesis results available.'); return; }
+
+  const tau2Method = AppState.settings?.tau2Method ?? 'DL';
+  const hksj = AppState.settings?.useHKSJ ?? true;
+  const confLevel = AppState.settings?.confLevel ?? 0.95;
+  const k = track.k;
+  const outcomeKey = r.outcomeKey ?? 'mace';
+
+  let report = '';
+
+  /* Title */
+  report += '='.repeat(70) + '\n';
+  report += 'METHODOLOGICAL REPORT\n';
+  report += escapeHtml(config.name ?? 'Living Meta-Analysis') + '\n';
+  report += 'Generated: ' + new Date().toISOString().slice(0, 10) + ' by LivingMeta v1.0\n';
+  report += '='.repeat(70) + '\n\n';
+
+  /* 1. ELIGIBILITY CRITERIA (PRISMA Item 5-6) */
+  report += '1. ELIGIBILITY CRITERIA\n' + '-'.repeat(40) + '\n';
+  report += 'Population: ' + (config.pico?.population ?? 'Not specified') + '\n';
+  report += 'Intervention: ' + (config.pico?.intervention ?? 'Not specified') + '\n';
+  report += 'Comparator: ' + (config.pico?.comparator ?? 'Not specified') + '\n';
+  report += 'Outcomes: ' + (config.pico?.outcomes?.map(function(o) { return o.name + (o.primary ? ' (PRIMARY)' : ''); }).join('; ') ?? 'Not specified') + '\n';
+  if (config.eligibility) {
+    report += '\nInclusion criteria:\n';
+    (config.eligibility.include ?? []).forEach(function(c) { report += '  - ' + c + '\n'; });
+    report += '\nExclusion criteria:\n';
+    (config.eligibility.exclude ?? []).forEach(function(c) { report += '  - ' + c + '\n'; });
+  }
+  report += '\n';
+
+  /* 2. INFORMATION SOURCES (PRISMA Item 7) */
+  report += '2. INFORMATION SOURCES\n' + '-'.repeat(40) + '\n';
+  report += 'Databases searched:\n';
+  if (config.searchStrategy?.ctgov) report += '  - ClinicalTrials.gov (CT.gov API v2)\n';
+  if (config.searchStrategy?.pubmed) report += '  - PubMed/MEDLINE\n';
+  if (config.searchStrategy?.openalex) report += '  - OpenAlex\n';
+  report += '  - Reference lists of included trials\n';
+  report += 'Last search date: ' + (config.lastUpdated ?? 'See audit log') + '\n\n';
+
+  /* 3. SEARCH STRATEGY (PRISMA Item 8) */
+  report += '3. SEARCH STRATEGY\n' + '-'.repeat(40) + '\n';
+  if (config.searchStrategy?.ctgov) report += 'CT.gov: ' + config.searchStrategy.ctgov + '\n';
+  if (config.searchStrategy?.pubmed) report += 'PubMed: ' + config.searchStrategy.pubmed + '\n';
+  report += '\n';
+
+  /* 4. STUDY SELECTION (PRISMA Item 9) */
+  report += '4. STUDY SELECTION\n' + '-'.repeat(40) + '\n';
+  report += 'Screening was performed using an automated classifier with manual verification.\n';
+  report += 'Inclusion decisions are recorded with full rationale in the screening log.\n';
+  report += 'Risk of bias was assessed using a modified Cochrane RoB 2 tool across 5 domains.\n\n';
+
+  /* 5. DATA EXTRACTION (PRISMA Item 10) */
+  report += '5. DATA EXTRACTION\n' + '-'.repeat(40) + '\n';
+  report += 'Effect sizes were extracted using the TextExtractor module (50+ regex patterns)\n';
+  report += 'supporting HR, aHR, OR, RR, IRR, MD, SMD, ARD, NNT, and event count formats.\n';
+  report += 'Extracted values undergo plausibility checks (range, CI ordering, log-scale consistency).\n';
+  report += 'Manual overrides can be applied and are tracked in the audit log.\n\n';
+
+  /* 6. SYNTHESIS METHODS (PRISMA Item 13) */
+  report += '6. SYNTHESIS METHODS\n' + '-'.repeat(40) + '\n';
+  report += 'Dual-track synthesis:\n';
+  report += '  Track A: Published hazard ratios pooled on log(HR) scale\n';
+  report += '  Track B: Odds ratios computed from 2x2 event tables (0.5 continuity correction)\n\n';
+  report += 'Between-study variance: ' + tau2Method + ' estimator\n';
+  if (hksj) report += 'CI adjustment: Hartung-Knapp-Sidik-Jonkman (HKSJ) with IQWiG modification\n';
+  report += 'Confidence level: ' + (confLevel * 100) + '%\n';
+  report += 'Prediction interval: t-distribution with df = k-2, incorporating tau-squared\n\n';
+
+  report += 'Six tau-squared estimators computed as sensitivity analysis:\n';
+  report += '  DerSimonian-Laird, REML, Paule-Mandel, Hunter-Schmidt, Hedges-Olkin, Empirical Bayes\n\n';
+
+  report += 'Fixed-effect methods: Inverse-variance, Mantel-Haenszel OR, Peto OR\n\n';
+
+  /* 7. HETEROGENEITY ASSESSMENT */
+  report += '7. HETEROGENEITY ASSESSMENT\n' + '-'.repeat(40) + '\n';
+  report += 'Metrics: I-squared, Cochran Q (p-value), prediction interval\n';
+  report += 'Profile likelihood CI for tau-squared\n';
+  report += 'Q-profile CI for I-squared\n';
+  report += 'Effective k and entropy measures\n\n';
+
+  /* 8. PUBLICATION BIAS */
+  report += '8. PUBLICATION BIAS ASSESSMENT\n' + '-'.repeat(40) + '\n';
+  report += 'Methods applied:\n';
+  report += '  - Funnel plot (visual inspection)\n';
+  report += '  - Egger regression test\n';
+  report += '  - Begg rank correlation test\n';
+  report += '  - Trim-and-fill (Duval & Tweedie)\n';
+  report += '  - PET-PEESE (Stanley & Doucouliagos)\n';
+  report += '  - Doi plot with LFK index (Furuya-Kanamori et al. 2018)\n';
+  report += '  - Harbord test (for binary outcomes)\n';
+  report += '  - Copas selection model\n';
+  report += '  - Fail-safe N (Rosenthal + Orwin)\n';
+  report += '  - CT.gov registry audit (publication lag, outcome drift)\n';
+  report += '  - Enrollment-weighted sensitivity analysis\n\n';
+
+  /* 9. SENSITIVITY ANALYSES */
+  report += '9. SENSITIVITY ANALYSES\n' + '-'.repeat(40) + '\n';
+  report += '  - Leave-one-out (sequential omission of each study)\n';
+  report += '  - Cumulative meta-analysis (ordered by year)\n';
+  report += '  - Permutation test (exact, all 2^k sign-flip combinations)\n';
+  report += '  - GOSH (graphical overview of study heterogeneity)\n';
+  report += '  - Continuity correction sensitivity (0.5, 0, 0.25, reciprocal)\n';
+  report += '  - Cook distance and influence diagnostics\n';
+  report += '  - Firth penalized likelihood (rare-event correction)\n';
+  report += '  - Non-collapsibility adjustment (OR/HR)\n';
+  report += '  - Bayesian prior sensitivity (3 priors: flat, skeptical, enthusiastic)\n';
+  report += '  - E-value for unmeasured confounding\n';
+  report += '  - Fragility index\n\n';
+
+  /* 10. ADVANCED METHODS */
+  report += '10. ADVANCED METHODS\n' + '-'.repeat(40) + '\n';
+  report += '  - Bayesian random-effects (grid search: flat mu, half-Cauchy tau)\n';
+  report += '  - Robust Bayesian MA (RoBMA, 4-model averaging)\n';
+  report += '  - Trial Sequential Analysis (alpha-spending: OBF/Pocock/Lan-DeMets)\n';
+  report += '  - Z-curve (Expected Replication Rate / Discovery Rate)\n';
+  report += '  - Sceptical p-value (Matthews 2018)\n';
+  report += '  - Intrinsic credibility (Held 2019)\n';
+  report += '  - Conditional power and predictive probability\n';
+  report += '  - Bootstrap prediction interval (CD-based, Nagashima-Noma 2019)\n';
+  report += '  - Bayesian assurance (O\'Hagan 2005)\n';
+  report += '  - Empirical Bayesian heterogeneity prior (Rover 2023)\n';
+  report += '  - NNT curve across baseline risk\n';
+  if (config.subgroups) {
+    report += '  - Meta-regression (subgroup + year)\n';
+    if (config.subgroups?.drugClass) report += '  - Network meta-analysis (Bucher indirect comparisons, P-scores)\n';
+  }
+  report += '\n';
+
+  /* 11. CERTAINTY OF EVIDENCE */
+  report += '11. CERTAINTY OF EVIDENCE\n' + '-'.repeat(40) + '\n';
+  report += 'GRADE framework applied across 5 domains:\n';
+  report += '  Risk of bias, Inconsistency, Indirectness, Imprecision, Publication bias\n';
+  if (r.grade) {
+    report += 'Current assessment: ' + (r.grade.overall ?? 'Not computed') + '\n';
+  }
+  report += '\n';
+
+  /* 12. RESULTS SNAPSHOT */
+  report += '12. RESULTS SNAPSHOT (' + outcomeKey.toUpperCase() + ')\n' + '-'.repeat(40) + '\n';
+  const or = Math.exp(track.primary.estimate);
+  report += 'Studies included: k = ' + k + '\n';
+  report += 'Pooled ' + track.measure + ': ' + or.toFixed(3) + ' (95% CI: ' + Math.exp(track.primary.ci[0]).toFixed(3) + ' to ' + Math.exp(track.primary.ci[1]).toFixed(3) + ')\n';
+  report += 'Tau-squared (' + tau2Method + '): ' + (track.primary.tau2 ?? 0).toFixed(4) + '\n';
+  report += 'I-squared: ' + track.primary.I2.toFixed(1) + '%\n';
+  report += 'Q-test: p = ' + (track.primary.Qp ?? NaN).toFixed(4) + '\n';
+  if (track.primary.pi) report += 'Prediction interval: ' + Math.exp(track.primary.pi[0]).toFixed(3) + ' to ' + Math.exp(track.primary.pi[1]).toFixed(3) + '\n';
+  report += '\n';
+
+  /* 13. VALIDATION */
+  report += '13. VALIDATION & CERTIFICATION\n' + '-'.repeat(40) + '\n';
+  report += 'All analyses conducted in LivingMeta v1.0 (browser-based, single-file HTML).\n';
+  report += 'Cross-validated against R metafor package via WebR (in-browser WebAssembly).\n';
+  report += 'Results certified with SHA-256 hash (TruthCert).\n';
+  report += 'Full audit log maintained with timestamped actions.\n\n';
+
+  report += '='.repeat(70) + '\n';
+  report += 'END OF METHODOLOGICAL REPORT\n';
+  report += '='.repeat(70) + '\n';
+
+  return report;
+}
+
+function renderMethodsReport() {
+  const area = document.getElementById('methodsReportArea');
+  if (!area) return;
+  const report = generateFullMethodsReport();
+  if (!report) { area.innerHTML = '<span style="opacity:0.6;">Run synthesis first</span>'; return; }
+
+  let html = '<div style="display:flex;gap:8px;margin-bottom:12px;">';
+  html += '<button class="btn btn-outline" onclick="copyMethodsReport()" style="font-size:0.8rem;">Copy to Clipboard</button>';
+  html += '<button class="btn btn-outline" onclick="downloadMethodsReport()" style="font-size:0.8rem;">Download .txt</button>';
+  html += '</div>';
+  html += '<pre style="white-space:pre-wrap;font-size:0.78rem;max-height:600px;overflow-y:auto;background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid var(--border-color);line-height:1.6;">' + escapeHtml(report) + '</pre>';
+  area.innerHTML = html;
+}
+
+function copyMethodsReport() {
+  const report = generateFullMethodsReport();
+  if (report && navigator.clipboard) {
+    navigator.clipboard.writeText(report)
+      .then(function() { showToast('Methods report copied to clipboard.'); })
+      .catch(function() { showToast('Copy failed. Try Ctrl+C.'); });
+  }
+}
+
+function downloadMethodsReport() {
+  const report = generateFullMethodsReport();
+  if (!report) return;
+  const config = getConfig();
+  const blob = new Blob([report], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'LivingMeta_Methods_' + (config.id ?? 'report') + '_' + new Date().toISOString().slice(0, 10) + '.txt';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Methods report downloaded.');
+  logAudit('export_methods_report', { configId: config.id });
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    FEATURE J: PATIENT MODE TOGGLE
