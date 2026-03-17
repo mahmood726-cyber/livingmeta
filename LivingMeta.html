@@ -1135,6 +1135,9 @@
     <!-- Rendered by JS -->
   </div>
 
+  <div class="section-header" style="margin-top:24px;">Trial Timeline</div>
+  <div id="trialGanttPlot" style="min-height:350px;"></div>
+
   <div class="section-header" style="margin-top:24px;">Data Quality Dashboard</div>
   <div id="dataQualityArea" class="stub-area">
     Select a config to see data quality scoring and completeness analysis.
@@ -1400,6 +1403,12 @@
     <div class="stub-area" style="border: none; min-height: 480px; display: flex; align-items: center; justify-content: center;">
       Run analysis to generate forest plot
     </div>
+  </div>
+
+  <div class="section-header" style="margin-top:24px;">Heterogeneity Decomposition</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
+    <div id="heterogeneityPie" style="min-height:280px;"></div>
+    <div id="heterogeneityDetails" class="stub-area" style="border:none;">Run synthesis first</div>
   </div>
 
   <div class="section-header" style="margin-top:24px;">Sensitivity Forest (Multi-Method Comparison)</div>
@@ -4810,8 +4819,10 @@ function handleConfigChange(configId) {
   ['forestPlotContainer','funnelPlotContainer','galbraithPlot','baujatPlot','labbePlot',
    'goshPlot','doiPlot','tsaPlotContainer','predDistPlot','seqBayesPlot','cdCurvePlot',
    'subgroupForestPlot','bayesPosteriorPlot','nntCurvePlot','metaRegPlot',
-   'nmaNetworkPlot','evidenceTimelinePlot','evidenceVelocityPlot','cooksDistancePlot','sensitivityForestPlot','studyWeightsPlot'
+   'nmaNetworkPlot','evidenceTimelinePlot','evidenceVelocityPlot','cooksDistancePlot','sensitivityForestPlot','studyWeightsPlot','heterogeneityPie','trialGanttPlot'
   ].forEach(function(id) { var el = document.getElementById(id); if (el) { try { Plotly.purge(el); } catch(e) {} } });
+  /* Render trial Gantt AFTER purge (so it's not immediately cleared) */
+  if (typeof renderTrialGantt === 'function') renderTrialGantt(getConfig());
   /* Clear stale result panels */
   ['synthesisResultsArea','trackAResults','trackBResults','gradeSofTable',
    'convergenceDashboard','methodsParagraph','certBundleStatus'
@@ -7665,7 +7676,7 @@ function mhOR(trials) {
   }
   const lnOR = Math.log(or);
   const se = Math.sqrt(R/(2*num*num) + S/(2*num*den) + T2/(2*den*den));
-  const z = normalQuantile(0.975);
+  const z = normalQuantile(1 - (1 - (AppState.settings?.confLevel ?? 0.95)) / 2);
   return { or, lnOR, se, ci: [Math.exp(lnOR - z*se), Math.exp(lnOR + z*se)], method: 'MH-OR' };
 }
 
@@ -7683,7 +7694,7 @@ function petoOR(trials) {
   if (sumV <= 0) return null;
   const lnOR = sumOE / sumV;
   const se = Math.sqrt(1 / sumV);
-  const z = normalQuantile(0.975);
+  const z = normalQuantile(1 - (1 - (AppState.settings?.confLevel ?? 0.95)) / 2);
   const or = Math.exp(lnOR);
   return { or, lnOR, se, ci: [Math.exp(lnOR - z*se), Math.exp(lnOR + z*se)], method: 'Peto' };
 }
@@ -7775,7 +7786,7 @@ const BiasSuite = {
     const nw = newVi.map(v => 1/(v + adjTau2)), nsW = sum(nw);
     const adj = sum(newYi.map((y,i) => nw[i]*y)) / nsW;
     const adjSE = Math.sqrt(1/nsW);
-    const z = normalQuantile(0.975);
+    const z = normalQuantile(1 - (1 - (AppState.settings?.confLevel ?? 0.95)) / 2);
     return { k0, adjusted: adj, adjustedCI: [adj - z*adjSE, adj + z*adjSE], side,
       conclusion: k0 > 0 ? `${k0} imputed studies (${side} side)` : 'No missing studies' };
   },
@@ -8104,6 +8115,10 @@ function runSynthesis() {
   // Store round 2+3 results
   Object.assign(AppState.results, { threeLevelMA: threeLevelResult, evidenceVelocity: evVelocity,
     decisionRegret: drResult, cooksDistance: cdResult, classifierMetrics: cmResult });
+  // Heterogeneity decomposition pie
+  renderHeterogeneityPie(evTrack);
+  // Trial timeline Gantt
+  renderTrialGantt(config);
   // Study weights bubble chart
   renderStudyWeights(evTrack);
   // Power calculator
@@ -8381,16 +8396,21 @@ function renderForestPlot(track, targetId) {
     text: [pooledEst.toFixed(2) + ' [' + pooledLo.toFixed(2) + ', ' + pooledHi.toFixed(2) + ']'], hoverinfo: 'text'
   }];
 
-  /* Add prediction interval as shaded region */
+  /* Add prediction interval as diamond trace + pooled CI as shaded region */
   const piLo = isNaN(track.primary.pi?.[0]) ? null : exp(track.primary.pi[0]);
   const piHi = isNaN(track.primary.pi?.[1]) ? null : exp(track.primary.pi[1]);
+  if (piLo != null && piHi != null) {
+    allNames.push('Prediction Interval');
+    traces.push({
+      x: [pooledEst], y: ['Prediction Interval'], mode: 'markers', type: 'scatter', name: 'PI',
+      marker: { size: 14, color: '#f59e0b', symbol: 'diamond-open', line: { width: 2.5 } },
+      error_x: { type: 'data', symmetric: false, array: [piHi - pooledEst], arrayminus: [pooledEst - piLo], thickness: 2.5, color: '#f59e0b' },
+      text: ['PI: ' + piLo.toFixed(2) + ' \u2013 ' + piHi.toFixed(2)], hoverinfo: 'text', showlegend: false
+    });
+  }
   const shapes = [
     { type: 'line', x0: 1, x1: 1, y0: -0.5, y1: allNames.length - 0.5, line: { color: '#94a3b8', width: 1.5, dash: 'dot' } }
   ];
-  if (piLo != null && piHi != null) {
-    shapes.push({ type: 'rect', x0: piLo, x1: piHi, y0: allNames.length - 1.4, y1: allNames.length - 0.6,
-      fillcolor: 'rgba(239,68,68,0.08)', line: { width: 1, color: 'rgba(239,68,68,0.3)', dash: 'dash' } });
-  }
 
   const isDark = document.body.classList.contains('dark-mode');
   const layout = {
@@ -11262,7 +11282,7 @@ function computeBootstrapPI(yi, vi, tau2, nBoot) {
 
   /* Standard (Wald) PI for comparison */
   const waldSE = Math.sqrt(1 / sumW + tau2Use);
-  const zCrit = normalQuantile(0.975);
+  const zCrit = normalQuantile(1 - (1 - (AppState.settings?.confLevel ?? 0.95)) / 2);
   const waldPI = [muHat - zCrit * waldSE, muHat + zCrit * waldSE];
 
   return {
@@ -11379,7 +11399,7 @@ function computeZCurve(track) {
   if (!track || !track.yi || track.yi.length < 2) return null;
   const k = track.yi.length;
   const zi = track.yi.map((y, i) => Math.abs(y / Math.sqrt(track.vi[i])));
-  const zAlpha = normalQuantile(0.975);
+  const zAlpha = normalQuantile(1 - (1 - (AppState.settings?.confLevel ?? 0.95)) / 2);
   /* Expected Replication Rate: mean power across studies */
   const powers = zi.map(z => 1 - normalCDF(zAlpha - z));
   const ERR = powers.reduce((a, b) => a + b, 0) / k;
@@ -11877,7 +11897,7 @@ function computeCDPredInt(yi, vi, nBoot) {
   const pi80 = [bootEffects[Math.floor(0.10 * nBoot)], bootEffects[Math.floor(0.90 * nBoot)]];
 
   /* Standard HTS prediction interval for comparison */
-  const tCrit = k > 2 ? tQuantile(0.975, k - 2) : normalQuantile(0.975);
+  const tCrit = k > 2 ? tQuantile(1 - (1 - (AppState.settings?.confLevel ?? 0.95)) / 2, k - 2) : normalQuantile(1 - (1 - (AppState.settings?.confLevel ?? 0.95)) / 2);
   const sePI = Math.sqrt(1/sumW0 + tau2DL);
   const htsPI = [muDL - tCrit * sePI, muDL + tCrit * sePI];
 
@@ -14065,6 +14085,140 @@ function renderMetaRegression(reg) {
 
 
 /* ═══════════════════════════════════════════════════════════════════
+   FEATURE A5: HETEROGENEITY DECOMPOSITION PIE CHART
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderHeterogeneityPie(trackResult) {
+  const plotDiv = document.getElementById('heterogeneityPie');
+  const detailDiv = document.getElementById('heterogeneityDetails');
+  if (!plotDiv) return;
+  if (!trackResult || !trackResult.primary) {
+    if (plotDiv) Plotly.purge(plotDiv);
+    if (detailDiv) detailDiv.innerHTML = '<span style="opacity:0.6;">Run synthesis first</span>';
+    return;
+  }
+
+  const I2 = trackResult.primary.I2;
+  const tau2 = trackResult.primary.tau2 ?? 0;
+  const k = trackResult.k;
+  const avgVi = trackResult.vi.reduce((s, v) => s + v, 0) / k;
+  const samplingVar = avgVi;
+  const totalVar = samplingVar + tau2;
+  const pctHeterog = totalVar > 0 ? (tau2 / totalVar * 100) : 0;
+  const pctSampling = 100 - pctHeterog;
+
+  const isDark = document.body.classList.contains('dark-mode');
+  Plotly.purge(plotDiv);
+  Plotly.newPlot(plotDiv, [{
+    values: [pctHeterog, pctSampling],
+    labels: ['Between-study (\u03C4\u00B2)', 'Within-study (sampling)'],
+    type: 'pie', hole: 0.5,
+    marker: { colors: ['#ef4444', '#3b82f6'] },
+    textinfo: 'label+percent', textposition: 'outside',
+    hoverinfo: 'label+percent+value',
+    textfont: { size: 11, color: isDark ? '#e2e8f0' : '#1e293b' }
+  }], {
+    title: { text: 'Variance Decomposition', font: { size: 13 } },
+    showlegend: false,
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: isDark ? '#e2e8f0' : '#1e293b' },
+    margin: { t: 40, b: 20, l: 20, r: 20 },
+    annotations: [{ text: 'I\u00B2=' + I2.toFixed(0) + '%', showarrow: false, font: { size: 16, color: isDark ? '#e2e8f0' : '#1e293b' } }]
+  }, { responsive: true });
+
+  if (detailDiv) {
+    const interpret = I2 < 25 ? 'Low' : I2 < 50 ? 'Moderate' : I2 < 75 ? 'Substantial' : 'Considerable';
+    const iColor = I2 < 25 ? '#16a34a' : I2 < 50 ? '#d97706' : I2 < 75 ? '#ea580c' : '#dc2626';
+    let html = '<div style="font-size:0.85rem;margin-bottom:8px;">';
+    html += '<strong>I\u00B2 = ' + I2.toFixed(1) + '%</strong> — <span style="color:' + iColor + ';font-weight:600;">' + interpret + ' heterogeneity</span></div>';
+    html += '<table style="font-size:0.78rem;border-collapse:collapse;width:100%;">';
+    html += '<tr><td style="padding:4px;">Between-study variance (\u03C4\u00B2)</td><td style="text-align:right;font-weight:600;">' + tau2.toFixed(4) + '</td></tr>';
+    html += '<tr><td style="padding:4px;">Average within-study variance</td><td style="text-align:right;">' + samplingVar.toFixed(4) + '</td></tr>';
+    html += '<tr><td style="padding:4px;">Total variance</td><td style="text-align:right;">' + totalVar.toFixed(4) + '</td></tr>';
+    html += '<tr><td style="padding:4px;">Cochran Q (p-value)</td><td style="text-align:right;">' + (trackResult.primary.Q ?? 0).toFixed(2) + ' (p=' + (trackResult.primary.Qp != null ? (trackResult.primary.Qp < 0.001 ? '<0.001' : trackResult.primary.Qp.toFixed(3)) : 'N/A') + ')</td></tr>';
+    html += '<tr><td style="padding:4px;">Prediction interval</td><td style="text-align:right;">';
+    if (trackResult.primary.pi && !isNaN(trackResult.primary.pi[0])) {
+      html += Math.exp(trackResult.primary.pi[0]).toFixed(3) + ' \u2013 ' + Math.exp(trackResult.primary.pi[1]).toFixed(3);
+    } else html += 'N/A';
+    html += '</td></tr></table>';
+    html += '<div style="font-size:0.72rem;opacity:0.5;margin-top:6px;">Higgins &amp; Thompson (2002). I\u00B2: &lt;25% low, 25-50% moderate, 50-75% substantial, &gt;75% considerable.</div>';
+    detailDiv.innerHTML = html;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE A6: KEYBOARD SHORTCUTS
+   ═══════════════════════════════════════════════════════════════════ */
+
+(function initKeyboardShortcuts() {
+  document.addEventListener('keydown', function(e) {
+    /* Skip if user is typing in an input/textarea */
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+    /* Ctrl+Enter: Run synthesis */
+    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); if (typeof runSynthesis === 'function') runSynthesis(); return; }
+    /* Ctrl+E: Export bundle */
+    if (e.ctrlKey && e.key === 'e') { e.preventDefault(); if (typeof exportBundle === 'function') exportBundle(); return; }
+    /* Ctrl+P: Print (browser default, let it through) */
+
+    /* Number keys 1-8: Switch tabs */
+    if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key >= '1' && e.key <= '8') {
+      const tabs = ['protocol','search','screen','extract','synthesize','bias','grade','certify'];
+      const idx = parseInt(e.key) - 1;
+      if (idx < tabs.length && typeof switchTab === 'function') { e.preventDefault(); switchTab(tabs[idx]); }
+    }
+
+    /* ? key: Show shortcuts help */
+    if (e.key === '?' && !e.ctrlKey) {
+      showToast('Shortcuts: 1-8=tabs, Ctrl+Enter=synthesize, Ctrl+E=export');
+    }
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE A7: TRIAL TIMELINE GANTT CHART
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderTrialGantt(config) {
+  const plotDiv = document.getElementById('trialGanttPlot');
+  if (!plotDiv) return;
+  if (!config || !config.trials || config.trials.length === 0) {
+    plotDiv.innerHTML = '<div class="stub-area" style="border:none;">No trial data</div>';
+    return;
+  }
+
+  const isDark = document.body.classList.contains('dark-mode');
+  const trials = config.trials.filter(t => t.year).sort((a, b) => (a.year ?? 0) - (b.year ?? 0));
+  if (trials.length === 0) { plotDiv.innerHTML = '<div class="stub-area" style="border:none;">No year data for timeline</div>'; return; }
+
+  const phaseColors = { PHASE1: '#94a3b8', PHASE2: '#f59e0b', PHASE3: '#3b82f6', PHASE4: '#16a34a', 'PHASE2/3': '#7c3aed' };
+  const names = trials.map(t => t.id);
+  const starts = trials.map(t => t.year - (t.followUpMonths ? t.followUpMonths / 12 : 2));
+  const ends = trials.map(t => t.year);
+  const colors = trials.map(t => phaseColors[t.phase] ?? '#64748b');
+  const nTotals = trials.map(t => t.nTotal ?? ((t.nTreatment ?? 0) + (t.nControl ?? 0)));
+
+  const traces = [{
+    x: ends.map((e, i) => e - starts[i]), y: names, type: 'bar', orientation: 'h',
+    base: starts,
+    marker: { color: colors, opacity: 0.85, line: { width: 1, color: isDark ? '#1e293b' : 'white' } },
+    text: trials.map((t, i) => t.id + ' (' + (t.phase ?? '?') + ') N=' + nTotals[i]),
+    hoverinfo: 'text', showlegend: false
+  }];
+
+  Plotly.purge(plotDiv);
+  Plotly.newPlot(plotDiv, traces, {
+    title: { text: 'Trial Timeline', font: { size: 14 } },
+    xaxis: { title: 'Year', gridcolor: isDark ? '#334155' : '#e2e8f0' },
+    yaxis: { automargin: true, autorange: 'reversed' },
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: isDark ? '#e2e8f0' : '#1e293b' },
+    margin: { t: 40, b: 50, l: 120, r: 20 },
+    height: Math.max(250, 30 + trials.length * 28)
+  }, { responsive: true });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    FEATURE A1: CSV TRIAL DATA IMPORT
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -14425,7 +14579,7 @@ function computePowerCalc(trackResult) {
   const avgN = k > 0 ? Math.round(totalN / k) : 500;
 
   /* Required information size for given effect at alpha=0.05 */
-  const z_alpha = normalQuantile(0.975);
+  const z_alpha = normalQuantile(1 - (1 - (AppState.settings?.confLevel ?? 0.95)) / 2);
   const results = [];
   for (const power of [0.80, 0.90, 0.95]) {
     const z_beta = normalQuantile(power);
@@ -14921,7 +15075,7 @@ function computeDecisionRegret(trackResult) {
   }
   const totalN = (trackResult.trials ?? []).reduce((s, t) => s + (t.tN ?? 0) + (t.cN ?? 0), 0);
   const logEff = Math.abs(est);
-  const ris = logEff > 0 ? Math.round(4 * Math.pow(normalQuantile(0.975) + normalQuantile(0.80), 2) / (logEff * logEff)) : Infinity;
+  const ris = logEff > 0 ? Math.round(4 * Math.pow(normalQuantile(1 - (1 - (AppState.settings?.confLevel ?? 0.95)) / 2) + normalQuantile(0.80), 2) / (logEff * logEff)) : Infinity;
   const infoFrac = ris > 0 && isFinite(ris) ? Math.min(1, totalN / ris) : null;
   return { verdict, pBenefit, pHarm: 1 - pBenefit, effect, ciLo, ciHi, regretAct, regretWait, recommendation,
     nntOpportunityCost: nntOC, I2, piCoversNull, k, infoFraction: infoFrac, totalN, ris: isFinite(ris) ? ris : null };

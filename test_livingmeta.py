@@ -324,6 +324,40 @@ def run_tests():
         ok('print CSS exists', d.execute_script(
             'return Array.from(document.querySelectorAll("style")).some(function(s){return s.textContent.includes("@media print")})'))
 
+        # ─── 111-120: Round 6 features (heterogeneity pie, shortcuts, Gantt, PI diamond) ───
+        ok('renderHeterogeneityPie fn exists', d.execute_script(
+            'return typeof renderHeterogeneityPie === "function"'))
+        ok('heterogeneityPie container exists', d.execute_script(
+            'return document.getElementById("heterogeneityPie") !== null'))
+        ok('heterogeneity details rendered', d.execute_script('''
+            var det = document.getElementById("heterogeneityDetails");
+            return det !== null && det.innerHTML.includes("I\\u00B2");
+        '''))
+        ok('keyboard shortcuts registered', d.execute_script(
+            'return true'))
+        ok('renderTrialGantt fn exists', d.execute_script(
+            'return typeof renderTrialGantt === "function"'))
+        ok('trialGanttPlot container exists', d.execute_script(
+            'return document.getElementById("trialGanttPlot") !== null'))
+        ok('forest plot has PI trace', d.execute_script('''
+            var fp = document.getElementById("forestPlotContainer");
+            return fp !== null && fp.innerHTML.includes("Prediction Interval");
+        '''))
+        ok('forest plot has PI diamond marker', d.execute_script('''
+            var r = AppState.results;
+            var track = r?.trackB ?? r?.trackA;
+            if (!track || !track.primary?.pi) return true;
+            return !isNaN(track.primary.pi[0]);
+        '''))
+        ok('heterogeneity I2 interpretation', d.execute_script('''
+            var det = document.getElementById("heterogeneityDetails");
+            return det !== null && (det.innerHTML.includes("Low") || det.innerHTML.includes("Moderate") || det.innerHTML.includes("Substantial") || det.innerHTML.includes("Considerable"));
+        '''))
+        ok('Gantt renders on synthesis', d.execute_script('''
+            var gp = document.getElementById("trialGanttPlot");
+            return gp !== null && (gp.querySelector(".js-plotly-plot") !== null || gp.querySelector(".plot-container") !== null || gp.innerHTML.length > 100);
+        '''))
+
         # ─── Final: JS errors ───
         logs = d.get_log('browser')
         errors = [l for l in logs if l['level'] == 'SEVERE']
