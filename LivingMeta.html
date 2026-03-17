@@ -14256,16 +14256,16 @@ function importTrialsCSV() {
       nTreatment: ntCol >= 0 ? parseInt(cols[ntCol]) || 0 : 0,
       nControl: ncCol >= 0 ? parseInt(cols[ncCol]) || 0 : 0,
       phase: 'PHASE3', status: 'CSV-imported', reference: 'Imported from CSV',
-      outcomes: {}, rob: { domains: ['low','low','low','low','low'], overall: 'low' },
+      outcomes: {}, rob: { domains: ['unclear','unclear','unclear','unclear','unclear'], overall: 'unclear' },
       _userAdded: true
     };
     trial.nTotal = trial.nTreatment + trial.nControl;
     const oc = {};
-    if (teCol >= 0) oc.tE = parseInt(cols[teCol]) || null;
-    if (ceCol >= 0) oc.cE = parseInt(cols[ceCol]) || null;
+    if (teCol >= 0) { const v = parseInt(cols[teCol]); oc.tE = isNaN(v) ? null : v; }
+    if (ceCol >= 0) { const v = parseInt(cols[ceCol]); oc.cE = isNaN(v) ? null : v; }
     if (ntCol >= 0) oc.tN = trial.nTreatment;
     if (ncCol >= 0) oc.cN = trial.nControl;
-    if (hrCol >= 0) { oc.hr = parseFloat(cols[hrCol]) || null; oc.hrLo = hrLoCol >= 0 ? parseFloat(cols[hrLoCol]) || null : null; oc.hrHi = hrHiCol >= 0 ? parseFloat(cols[hrHiCol]) || null : null; }
+    if (hrCol >= 0) { const h = parseFloat(cols[hrCol]); oc.hr = isFinite(h) ? h : null; oc.hrLo = hrLoCol >= 0 ? (isFinite(parseFloat(cols[hrLoCol])) ? parseFloat(cols[hrLoCol]) : null) : null; oc.hrHi = hrHiCol >= 0 ? (isFinite(parseFloat(cols[hrHiCol])) ? parseFloat(cols[hrHiCol]) : null) : null; }
     trial.outcomes[outcomeKey] = oc;
     config.trials.push(trial);
     if (!AppState._userTrials) AppState._userTrials = [];
@@ -14347,7 +14347,7 @@ function renderExecSummary() {
   html += '<span>k=' + track.k + '</span>';
   html += '<span>I\u00B2=' + I2.toFixed(0) + '%</span>';
   html += '<span style="color:' + (gradeColors[grade] ?? '#64748b') + ';font-weight:600;">GRADE: ' + escapeHtml(grade) + '</span>';
-  if (dr) html += '<span style="color:' + ({ 'STRONG BENEFIT': '#16a34a', 'PROBABLE BENEFIT': '#2563eb', 'POSSIBLE BENEFIT': '#d97706', 'UNCERTAIN': '#64748b', 'POSSIBLE HARM': '#dc2626' }[dr.verdict] ?? '#64748b') + ';font-weight:600;">' + dr.verdict + '</span>';
+  if (dr) html += '<span style="color:' + ({ 'STRONG BENEFIT': '#16a34a', 'PROBABLE BENEFIT': '#2563eb', 'POSSIBLE BENEFIT': '#d97706', 'UNCERTAIN': '#64748b', 'POSSIBLE HARM': '#dc2626' }[dr.verdict] ?? '#64748b') + ';font-weight:600;">' + escapeHtml(dr.verdict) + '</span>';
   html += '<span style="color:' + sigColor + ';">' + (sig ? '\u2714 Significant' : '\u2718 Not sig') + '</span>';
   content.innerHTML = html;
 }
@@ -14424,11 +14424,11 @@ function addUserTrial() {
   const year = parseInt(document.getElementById('te-year')?.value) || new Date().getFullYear();
   const nT = parseInt(document.getElementById('te-nt')?.value) || 0;
   const nC = parseInt(document.getElementById('te-nc')?.value) || 0;
-  const tE = parseInt(document.getElementById('te-te')?.value) ?? null;
-  const cE = parseInt(document.getElementById('te-ce')?.value) ?? null;
-  const hr = parseFloat(document.getElementById('te-hr')?.value) || null;
-  const hrLo = parseFloat(document.getElementById('te-hrlo')?.value) || null;
-  const hrHi = parseFloat(document.getElementById('te-hrhi')?.value) || null;
+  const _tE = parseInt(document.getElementById('te-te')?.value); const tE = isNaN(_tE) ? null : _tE;
+  const _cE = parseInt(document.getElementById('te-ce')?.value); const cE = isNaN(_cE) ? null : _cE;
+  const _hr = parseFloat(document.getElementById('te-hr')?.value); const hr = isFinite(_hr) ? _hr : null;
+  const _hrLo = parseFloat(document.getElementById('te-hrlo')?.value); const hrLo = isFinite(_hrLo) ? _hrLo : null;
+  const _hrHi = parseFloat(document.getElementById('te-hrhi')?.value); const hrHi = isFinite(_hrHi) ? _hrHi : null;
 
   const config = getConfig();
   if (!config) { showToast('No config loaded.'); return; }
@@ -14440,7 +14440,7 @@ function addUserTrial() {
   const trial = {
     id, nctId: nct, year, phase: 'PHASE3', nTreatment: nT, nControl: nC, nTotal: nT + nC,
     status: 'User-added', reference: 'User-entered data',
-    outcomes: {}, rob: { domains: ['low','low','low','low','low'], overall: 'low' },
+    outcomes: {}, rob: { domains: ['unclear','unclear','unclear','unclear','unclear'], overall: 'unclear' },
     _userAdded: true
   };
   trial.outcomes[outcomeKey] = {};
@@ -14488,7 +14488,7 @@ function runWhatIf() {
   const effectInput = parseFloat(document.getElementById('wi-effect')?.value);
   const seInput = parseFloat(document.getElementById('wi-se')?.value);
   const nInput = parseInt(document.getElementById('wi-n')?.value) || 0;
-  if (!effectInput || !seInput || seInput <= 0) { showToast('Enter valid effect and SE.'); return; }
+  if (!isFinite(effectInput) || effectInput <= 0 || !isFinite(seInput) || seInput <= 0) { showToast('Enter valid positive effect and SE.'); return; }
 
   const yiNew = [...track.yi, Math.log(effectInput)];
   const viNew = [...track.vi, seInput * seInput];
@@ -14615,7 +14615,7 @@ function renderPowerCalc(pc) {
   const pwColor = pc.currentPower >= 0.80 ? '#16a34a' : pc.currentPower >= 0.50 ? '#d97706' : '#dc2626';
   html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
   html += '<div style="font-size:1.2rem;font-weight:700;color:' + pwColor + ';">' + (pc.currentPower * 100).toFixed(0) + '%</div>';
-  html += '<div style="font-size:0.7rem;opacity:0.6;">Current Power</div></div>';
+  html += '<div style="font-size:0.7rem;opacity:0.6;">Post-hoc Power*</div></div>';
   html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
   html += '<div style="font-size:1.1rem;font-weight:700;">' + pc.effect.toFixed(3) + '</div>';
   html += '<div style="font-size:0.7rem;opacity:0.6;">Detected Effect</div></div>';
@@ -14638,6 +14638,7 @@ function renderPowerCalc(pc) {
     html += '<td style="text-align:center;">' + r.nTotal.toLocaleString() + '</td></tr>';
   }
   html += '</tbody></table>';
+  html += '<div style="font-size:0.7rem;opacity:0.5;margin-top:6px;">*Post-hoc power is a monotonic function of the p-value and does not represent a priori detection probability (Hoenig &amp; Heisey 2001). Interpret with caution.</div>';
   area.innerHTML = html;
 }
 
@@ -14684,14 +14685,14 @@ function renderSensitivityForest(results) {
   for (const [name, tau2Res] of Object.entries(track.tau2All)) {
     if (tau2Res == null || tau2Res.tau2 == null) continue;
     try {
-      const pe = PooledEstimate(track.yi, track.vi, tau2Res.tau2, { hksj: false, confLevel: 0.95, method: name });
+      const pe = PooledEstimate(track.yi, track.vi, tau2Res.tau2, { hksj: false, confLevel: AppState.settings?.confLevel ?? 0.95, method: name });
       if (pe && isFinite(pe.estimate)) methods.push({ name: name + ' (RE)', est: Math.exp(pe.estimate), ciLo: Math.exp(pe.ci[0]), ciHi: Math.exp(pe.ci[1]), color: '#3b82f6' });
     } catch(e) { /* skip failed estimator */ }
   }
   /* HKSJ */
   try {
     const hksjTau2 = (track.tau2All?.REML ?? track.tau2All?.DL)?.tau2 ?? 0;
-    const peHKSJ = PooledEstimate(track.yi, track.vi, hksjTau2, { hksj: true, confLevel: 0.95, method: 'HKSJ' });
+    const peHKSJ = PooledEstimate(track.yi, track.vi, hksjTau2, { hksj: true, confLevel: AppState.settings?.confLevel ?? 0.95, method: 'HKSJ' });
     if (peHKSJ && isFinite(peHKSJ.estimate)) methods.push({ name: 'REML+HKSJ', est: Math.exp(peHKSJ.estimate), ciLo: Math.exp(peHKSJ.ci[0]), ciHi: Math.exp(peHKSJ.ci[1]), color: '#7c3aed' });
   } catch(e) {}
   /* Fixed-effect */
@@ -14855,11 +14856,12 @@ function exportGradeCSV() {
     return;
   }
   const config = getConfig();
+  const safeCSV = function(v) { const s = String(v); return /^[=+@\t\r]/.test(s) ? "'" + s : s; };
   let csv = 'Outcome,k,Measure,Effect,CI_Lower,CI_Upper,I2_pct,Tau2,P_value,GRADE,Significant\n';
   for (const o of outcomes) {
-    csv += [o.key, o.k, o.measure, o.effect.toFixed(4), o.ciLo.toFixed(4), o.ciHi.toFixed(4),
+    csv += [safeCSV(o.key), o.k, safeCSV(o.measure), o.effect.toFixed(4), o.ciLo.toFixed(4), o.ciHi.toFixed(4),
       o.I2.toFixed(1), o.tau2.toFixed(4), o.pval != null ? o.pval.toFixed(4) : 'NA',
-      o.grade, o.sig ? 'Yes' : 'No'].join(',') + '\n';
+      safeCSV(o.grade), o.sig ? 'Yes' : 'No'].join(',') + '\n';
   }
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -14905,16 +14907,17 @@ function computeThreeLevelMA(yi, vi, trialIds) {
     const QB = sum(clusterEst.map((c, i) => wcB[i] * Math.pow(c.theta - thetaG, 2)));
     const CB = sumWB - sum(wcB.map(w => w * w)) / sumWB;
     tau2B = Math.max(0, (QB - (nClusters - 1)) / Math.max(CB, 1e-15));
-    let QW = 0, dfW = 0;
+    let QW = 0, dfW = 0, CW_denom = 0;
     for (const c of clusterEst) {
       if (c.k < 2) continue;
       const wiW = c.idx.map(j => 1 / (vi[j] + tau2W));
       const sumWW = sum(wiW);
       const muC = sum(c.idx.map((j, ii) => wiW[ii] * yi[j])) / sumWW;
       QW += sum(c.idx.map((j, ii) => wiW[ii] * Math.pow(yi[j] - muC, 2)));
+      CW_denom += sumWW - sum(wiW.map(w => w * w)) / sumWW;
       dfW += c.k - 1;
     }
-    if (dfW > 0) { const CW = QW / dfW; tau2W = Math.max(0, CW > 1 ? tau2W * CW : tau2W * 0.5); }
+    if (dfW > 0) { tau2W = Math.max(0, (QW - dfW) / Math.max(CW_denom, 1e-15)); }
     if (Math.abs(tau2W - prevW) + Math.abs(tau2B - prevB) < 1e-6) { converged = true; break; }
   }
   const tau2T = tau2W + tau2B;
@@ -14964,7 +14967,6 @@ function computeEvidenceVelocity(trackResult, config) {
   if (!trackResult || !trackResult.cumulative || trackResult.cumulative.length < 3) return null;
   const cum = trackResult.cumulative, k = cum.length;
   const measure = trackResult.measure ?? 'OR';
-  const isRatio = ['HR','OR','RR','IRR'].includes(measure);
   const ciWidths = cum.map(c => c.ci[1] - c.ci[0]);
   let narrowingSteps = 0;
   for (let i = 1; i < ciWidths.length; i++) if (ciWidths[i] < ciWidths[i - 1]) narrowingSteps++;
@@ -15045,7 +15047,8 @@ function computeDecisionRegret(trackResult) {
   if (!trackResult || !trackResult.primary) return null;
   const est = trackResult.primary.estimate, se = trackResult.primary.se;
   const tau2 = trackResult.primary.tau2 ?? 0, k = trackResult.k;
-  const pBenefit = normalCDF(-est / Math.sqrt(se * se + tau2));
+  /* P(pooled effect < 0) using pooled SE only (not predictive distribution) */
+  const pBenefit = normalCDF(-est / se);
   const effect = Math.exp(est);
   const ciLo = Math.exp(trackResult.primary.ci[0]), ciHi = Math.exp(trackResult.primary.ci[1]);
   const I2 = trackResult.primary.I2 ?? 0;
@@ -15087,7 +15090,7 @@ function renderDecisionRegret(dr) {
   if (!dr) { area.innerHTML = '<span style="opacity:0.6;">Run synthesis first</span>'; return; }
   const vc = { 'STRONG BENEFIT': '#16a34a', 'PROBABLE BENEFIT': '#2563eb', 'POSSIBLE BENEFIT': '#d97706', 'UNCERTAIN': '#64748b', 'POSSIBLE HARM': '#dc2626' }[dr.verdict] ?? '#64748b';
   let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:12px;">';
-  html += '<div style="background:var(--bg-card);padding:14px;border-radius:8px;text-align:center;border-left:4px solid ' + vc + ';"><div style="font-size:1.1rem;font-weight:800;color:' + vc + ';">' + dr.verdict + '</div><div style="font-size:0.7rem;opacity:0.6;">Decision Verdict</div></div>';
+  html += '<div style="background:var(--bg-card);padding:14px;border-radius:8px;text-align:center;border-left:4px solid ' + vc + ';"><div style="font-size:1.1rem;font-weight:800;color:' + vc + ';">' + escapeHtml(dr.verdict) + '</div><div style="font-size:0.7rem;opacity:0.6;">Decision Verdict</div></div>';
   html += '<div style="background:var(--bg-card);padding:14px;border-radius:8px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;">' + (dr.pBenefit * 100).toFixed(1) + '%</div><div style="font-size:0.7rem;opacity:0.6;">P(Benefit)</div></div>';
   html += '<div style="background:var(--bg-card);padding:14px;border-radius:8px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#dc2626;">' + (dr.regretAct * 100).toFixed(0) + '%</div><div style="font-size:0.7rem;opacity:0.6;">Regret (Act)</div></div>';
   html += '<div style="background:var(--bg-card);padding:14px;border-radius:8px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#d97706;">' + (dr.regretWait * 100).toFixed(0) + '%</div><div style="font-size:0.7rem;opacity:0.6;">Regret (Wait)</div></div>';
@@ -15126,7 +15129,7 @@ function computeCooksDistance(yi, vi, tau2, trialNames) {
     const leverage = wiF[i] / sumWF;
     const residual = (yi[i] - thetaFull) / Math.sqrt(vi[i] + tau2);
     const dffits = leverage > 0.999 ? 0 : residual * Math.sqrt(leverage / (1 - leverage));
-    const covRatio = k > 2 ? (1 - leverage) * (k - 1) / (k - 2) : 1;
+    const covRatio = sumWLoo > 0 ? sumWF / sumWLoo : 1; /* Var(theta)/Var(theta_{-i}) */
     if (cookD > maxCookD) { maxCookD = cookD; maxStudy = trialNames[i] ?? ('Study ' + (i + 1)); }
     results.push({ name: trialNames[i] ?? ('Study ' + (i + 1)), cookD, dfbetas, dffits, leverage, residual, covRatio, thetaLoo: Math.exp(thetaLoo), influential: cookD > threshold });
   }
@@ -15851,6 +15854,12 @@ function generateFullMethodsReport() {
     report += '  - Meta-regression (subgroup + year)\n';
     if (config.subgroups?.drugClass) report += '  - Network meta-analysis (Bucher indirect comparisons, P-scores)\n';
   }
+  report += '  - Three-level meta-analysis for clustered studies (Konstantopoulos 2011)\n';
+  report += '  - Evidence velocity and maturity scoring\n';
+  report += '  - Decision regret analysis (act vs wait framework)\n';
+  report += '  - Cook\'s distance, DFBETAS, DFFITS influence diagnostics (Viechtbauer & Cheung 2010)\n';
+  report += '  - Power and sample size calculator (prospective)\n';
+  report += '  - Multi-outcome heatmap with cross-outcome GRADE comparison\n';
   report += '\n';
 
   /* 11. CERTAINTY OF EVIDENCE */

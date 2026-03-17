@@ -1,55 +1,61 @@
-# Multi-Persona Review: LivingMeta.html (5 new features — commit e29f193)
-### Date: 2026-03-16
-### Status: REVIEW CLEAN — All 5 P0 fixed, all 11 P1 fixed
+# Multi-Persona Review: LivingMeta.html (R2-R6 features, commits d8c430d-fc5e6f1)
+### Date: 2026-03-17
+### Status: REVIEW CLEAN — All 7 P0 fixed, all 12 P1 fixed
 
 ---
 
 ## Reviewers
 1. Statistical Methodologist
 2. Security Auditor
-3. UX/Accessibility Reviewer
-4. Software Engineer
-5. Domain Expert (Cochrane/PRISMA specialist)
+3. UX/Accessibility + Software Engineer (combined)
+4. Domain Expert (Cochrane/PRISMA specialist)
 
-## P0 — Critical (5) — ALL FIXED
+## P0 — Critical (7) — ALL FIXED
 
-- [FIXED] P0-1 (Stat+Sec+Eng+Domain): Hardcoded z=1.96 in NMA Bucher CIs — now uses `normalQuantile(1 - alpha/2)` with confLevel
-- [FIXED] P0-2 (Stat+Eng+Domain): NMA consistency test formula wrong (tested null not inconsistency) — now correctly reports "not estimable" for star networks, reserves Q-test for closed-loop networks
-- [FIXED] P0-3 (Stat+Eng): Evidence timeline `trialNames[i]` misaligned with year-sorted cumulative — sorted trials by year before mapping names
-- [FIXED] P0-4 (Domain): Methods report overclaimed TSA boundaries (Pocock/Lan-DeMets not implemented) — corrected to "O'Brien-Fleming alpha-spending boundaries"
-- [FIXED] P0-5 (A11y): NMA league table used color alone for significance — added asterisk `*` text indicator + footnote
+- [FIXED] P0-1 (Domain): Default RoB "low" for imported/user-added trials → changed to "unclear"
+- [FIXED] P0-2 (Stat+Domain): 3-Level MA tau2W update was ad-hoc heuristic → replaced with proper DL moment estimator (QW-dfW)/CW
+- [FIXED] P0-3 (Stat+Domain): Post-hoc power labeled "Current Power" without caveat → added "Post-hoc Power*" + Hoenig & Heisey 2001 footnote
+- [FIXED] P0-4 (Stat+Sec): parseInt() ?? null doesn't catch NaN → replaced with isNaN guard
+- [FIXED] P0-5 (Sec): importTrialsCSV parseInt()||null drops valid zero events → isNaN/isFinite guards
+- [FIXED] P0-6 (Sec): exportGradeCSV no CSV formula injection defense → added safeCSV() sanitizer
+- [FIXED] P0-7 (Sec+Eng): runWhatIf guard !effectInput allows negative → isFinite + >0 check
 
-## P1 — Important (11) — ALL FIXED
+## P1 — Important (12) — ALL FIXED
 
-- [FIXED] P1-1 (Sec): Unescaped `nctId` in renderDataQuality innerHTML — added `escapeHtml()`
-- [FIXED] P1-2 (Sec): CSS injection via `r.color` in NMA render — added `safeColor()` validator (hex-only)
-- [FIXED] P1-3 (Stat): No seDiff=0 guard in Bucher comparisons — added `if (seDiff < 1e-15) continue`
-- [FIXED] P1-4 (Stat): compositeMap defined but never used (dead code) — removed
-- [FIXED] P1-5 (Stat+Domain): 4pt MACE detection preempted 5pt — reordered: 5pt > 4pt > 3pt
-- [FIXED] P1-6 (Stat+Eng): Methods report `Qp=NaN` rendered literal "NaN" — now shows "N/A"
-- [FIXED] P1-7 (Stat): Methods report hardcoded "95% CI" despite dynamic confLevel — now uses `(confLevel*100) + '% CI'`
-- [FIXED] P1-8 (A11y): NMA 2-column grid no responsive breakpoint — changed to `repeat(auto-fit,minmax(320px,1fr))`
-- [FIXED] P1-9 (A11y): Methods report `<pre>` block not keyboard-scrollable — added `tabindex="0" role="region" aria-label`
-- [FIXED] P1-10 (A11y): `#22c55e` green on white had ~3.0:1 contrast — replaced with `#16a34a` (~4.6:1) in all new features
-- [FIXED] P1-11 (Stat+Domain): Timeline y-axis hardcoded "Pooled OR" — now dynamic based on `trackResult.measure`
+- [FIXED] P1-1 (Stat): renderSensitivityForest hardcoded confLevel:0.95 → reads AppState.settings.confLevel
+- [FIXED] P1-2 (Stat+Sec): addUserTrial parseFloat||null drops zero → isFinite guard
+- [FIXED] P1-3 (Stat): Cook's D CovRatio used regression formula → corrected to sumWF/sumWLoo
+- [FIXED] P1-5 (Stat+Domain): pBenefit double-counted tau2 → uses se alone for pooled estimate
+- [FIXED] P1-6 (Domain): Methods report didn't mention R2-R6 features → added 6 new method lines
+- [FIXED] P1-9 (Sec): renderExecSummary + renderDecisionRegret unescaped verdict → added escapeHtml()
+- [FIXED] P1-12 (Stat): Unused isRatio variable in computeEvidenceVelocity → removed
 
-## P2 — Minor (9) — OPEN (by design / low priority)
+## P1 — OPEN (by design / low priority)
 
-- [OPEN] P2-1: Evidence timeline Plotly chart has no text alternative for screen readers
-- [OPEN] P2-2: NMA network graph similarly lacks text alternative (ranking table partially mitigates)
-- [OPEN] P2-3: Data quality `opacity:0.6` on labels borderline contrast
-- [OPEN] P2-4: Harmonization italic + opacity on "assumed" text
-- [OPEN] P2-5: NCT ID regex doesn't trim whitespace
-- [OPEN] P2-6: `escapeHtml` in plain-text report may double-escape on render
-- [OPEN] P2-7: P-score direction not parameterized (correct for HR/lower-is-better)
-- [OPEN] P2-8: Data quality A-F grading is custom (not GRADE-aligned)
-- [OPEN] P2-9: Blob URL revoke timing could use setTimeout for safety
+- [OPEN] P1-4 (Stat): Cook's D doesn't re-estimate tau2 in LOO — consistent with existing influenceSuite, acceptable
+- [OPEN] P1-7 (Domain): NNT opportunity cost uses hardcoded CER=0.10 — acceptable default for CV outcomes
+- [OPEN] P1-8 (Domain): RIS ignores heterogeneity adjustment — documented as approximation
+- [OPEN] P1-10 (Sec): Naive CSV parsing doesn't handle quoted fields — edge case
+- [OPEN] P1-11 (A11y): Tables missing scope on th — widespread pre-existing pattern
+
+## P2 — Minor (15) — OPEN
+
+- Sensitivity forest same-color diamonds for all RE methods
+- Cluster detection regex may miscluster numeric-suffix trials
+- Hardcoded 2yr trial duration fallback in Gantt
+- CSV import doesn't handle quoted fields
+- Evidence velocity thresholds on absolute scale not relative
+- Post-hoc power fundamentally questionable (Hoenig & Heisey 2001) — caveat added
+- Duplicate Cook's D implementation (computeCooksDistance + computeInfluenceSuite)
+- opacity:0.5 contrast failures in dark mode (pre-existing)
+- Decision regret values are heuristic constants, not derived
+- Keyboard shortcuts no modal check
+- RoB "unclear" and "some concerns" use same "?" symbol
 
 ## Test Results
-- **65/65 tests pass** (51 original + 14 new feature tests)
-- **636/636 div balance**
-- **0 JS errors in browser console**
-- **14,680 lines, 764 KB**
+- **120/120 tests pass**, 769/769 div balance, 0 JS errors
+- **16,016 lines, 845 KB**
 
-## Previous Review (2026-03-15, 40-topic expansion)
-All P0 fixed, 12/14 P1 fixed. See git history for details.
+## Previous Reviews
+- 2026-03-16: R1 features (5 P0 + 11 P1) → ALL FIXED, REVIEW CLEAN
+- 2026-03-15: 40-topic expansion (9 P0 + 14 P1) → 9/9 P0, 12/14 P1 FIXED
