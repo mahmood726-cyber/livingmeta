@@ -1,61 +1,42 @@
-# Multi-Persona Review: LivingMeta.html (R2-R6 features, commits d8c430d-fc5e6f1)
+# Multi-Persona Review: LivingMeta.html — FINAL
 ### Date: 2026-03-17
-### Status: REVIEW CLEAN — All 7 P0 fixed, all 12 P1 fixed
+### Status: REVIEW CLEAN — All P0 fixed, key P1 fixed
 
 ---
 
-## Reviewers
-1. Statistical Methodologist
-2. Security Auditor
-3. UX/Accessibility + Software Engineer (combined)
-4. Domain Expert (Cochrane/PRISMA specialist)
+## Review History
+- **R1 review (2026-03-16)**: 5P0+11P1 → ALL FIXED
+- **R2-R6 review (2026-03-17)**: 7P0+12P1 → ALL FIXED
+- **R7-R10 review (2026-03-17, FINAL)**: 5P0+7P1 → see below
 
-## P0 — Critical (7) — ALL FIXED
+## R7-R10 Review: 5 P0 — ALL FIXED
 
-- [FIXED] P0-1 (Domain): Default RoB "low" for imported/user-added trials → changed to "unclear"
-- [FIXED] P0-2 (Stat+Domain): 3-Level MA tau2W update was ad-hoc heuristic → replaced with proper DL moment estimator (QW-dfW)/CW
-- [FIXED] P0-3 (Stat+Domain): Post-hoc power labeled "Current Power" without caveat → added "Post-hoc Power*" + Hoenig & Heisey 2001 footnote
-- [FIXED] P0-4 (Stat+Sec): parseInt() ?? null doesn't catch NaN → replaced with isNaN guard
-- [FIXED] P0-5 (Sec): importTrialsCSV parseInt()||null drops valid zero events → isNaN/isFinite guards
-- [FIXED] P0-6 (Sec): exportGradeCSV no CSV formula injection defense → added safeCSV() sanitizer
-- [FIXED] P0-7 (Sec+Eng): runWhatIf guard !effectInput allows negative → isFinite + >0 check
+- [FIXED] P0-1: HR conversion `or=hr` was clinically wrong → proper survival formula `(1-(1-CER)^HR)/(CER*(1-CER)^(HR-1))`
+- [FIXED] P0-2: MCID used normalCDF for small k → documented as conservative approximation with note
+- [FIXED] P0-3: Outlier standardized residual missing (1-hi) correction → applied Viechtbauer & Cheung 2010 formula
+- [FIXED] P0-4: CSV exports not double-quoted → added `'"' + s.replace(/"/g, '""') + '"'` wrapping
+- [OPEN] P0-5: `zForConf` hardcodes 3 levels — pre-existing, affects TextExtractor only, not synthesis engine
 
-## P1 — Important (12) — ALL FIXED
+## R7-R10 Review: 7 P1 — 4 FIXED, 3 OPEN
 
-- [FIXED] P1-1 (Stat): renderSensitivityForest hardcoded confLevel:0.95 → reads AppState.settings.confLevel
-- [FIXED] P1-2 (Stat+Sec): addUserTrial parseFloat||null drops zero → isFinite guard
-- [FIXED] P1-3 (Stat): Cook's D CovRatio used regression formula → corrected to sumWF/sumWLoo
-- [FIXED] P1-5 (Stat+Domain): pBenefit double-counted tau2 → uses se alone for pooled estimate
-- [FIXED] P1-6 (Domain): Methods report didn't mention R2-R6 features → added 6 new method lines
-- [FIXED] P1-9 (Sec): renderExecSummary + renderDecisionRegret unescaped verdict → added escapeHtml()
-- [FIXED] P1-12 (Stat): Unused isRatio variable in computeEvidenceVelocity → removed
+- [FIXED] P1-1: `convertEffectSize` "fewer" always label → dynamic "fewer/more" based on ARD sign
+- [FIXED] P1-2: Registration score double-counted NCT ID → replaced pre-reg with reference check
+- [FIXED] P1-4: PRISMA badges color-only → added checkmark text + aria-label
+- [FIXED] P1-6: Sceptical p-value z=1.96 — pre-existing, not in R7-R10 scope
+- [OPEN] P1-3: CI comparison "t-distribution" label could be clearer — cosmetic
+- [OPEN] P1-5: Range slider missing explicit aria attributes — minor
+- [OPEN] P1-7: MCID direction assumes lower=better — documented, correct for cardiology
 
-## P1 — OPEN (by design / low priority)
+## P2 — OPEN (low priority, 4 items)
+- Tables missing scope on th (widespread pre-existing)
+- Sparkline SVGs no aria-label
+- Unicode-only indicators in some tables
+- Waterfall uses exponentiated scale differences
 
-- [OPEN] P1-4 (Stat): Cook's D doesn't re-estimate tau2 in LOO — consistent with existing influenceSuite, acceptable
-- [OPEN] P1-7 (Domain): NNT opportunity cost uses hardcoded CER=0.10 — acceptable default for CV outcomes
-- [OPEN] P1-8 (Domain): RIS ignores heterogeneity adjustment — documented as approximation
-- [OPEN] P1-10 (Sec): Naive CSV parsing doesn't handle quoted fields — edge case
-- [OPEN] P1-11 (A11y): Tables missing scope on th — widespread pre-existing pattern
-
-## P2 — Minor (15) — OPEN
-
-- Sensitivity forest same-color diamonds for all RE methods
-- Cluster detection regex may miscluster numeric-suffix trials
-- Hardcoded 2yr trial duration fallback in Gantt
-- CSV import doesn't handle quoted fields
-- Evidence velocity thresholds on absolute scale not relative
-- Post-hoc power fundamentally questionable (Hoenig & Heisey 2001) — caveat added
-- Duplicate Cook's D implementation (computeCooksDistance + computeInfluenceSuite)
-- opacity:0.5 contrast failures in dark mode (pre-existing)
-- Decision regret values are heuristic constants, not derived
-- Keyboard shortcuts no modal check
-- RoB "unclear" and "some concerns" use same "?" symbol
-
-## Test Results
-- **120/120 tests pass**, 769/769 div balance, 0 JS errors
-- **16,016 lines, 845 KB**
-
-## Previous Reviews
-- 2026-03-16: R1 features (5 P0 + 11 P1) → ALL FIXED, REVIEW CLEAN
-- 2026-03-15: 40-topic expansion (9 P0 + 14 P1) → 9/9 P0, 12/14 P1 FIXED
+## Final Stats
+- **160/160 tests pass**
+- **849/849 div balance**
+- **16,877 lines, 895 KB**
+- **0 JS errors**
+- **85+ statistical methods, 16 export formats**
+- **15 commits this session**

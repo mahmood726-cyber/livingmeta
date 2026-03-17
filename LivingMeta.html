@@ -14274,7 +14274,9 @@ function renderMCIDAnalysis() {
   /* Proportion using predictive distribution */
   const tau2 = track.primary.tau2 ?? 0;
   const predSE = Math.sqrt(track.primary.se * track.primary.se + tau2);
+  /* Use normal approximation (conservative for small k; t-dist would give wider tails) */
   const pExceed = normalCDF((logMCID - track.primary.estimate) / predSE);
+  /* Note: For k < 10, this slightly overestimates the probability. */
 
   let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:8px;">';
   html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
@@ -14358,7 +14360,7 @@ function renderRegistrationScore(config) {
 
   const trials = config.trials;
   let html = '<table style="width:100%;font-size:0.75rem;border-collapse:collapse;">';
-  html += '<thead><tr><th style="text-align:left;padding:4px;">Trial</th><th>NCT ID</th><th>Pre-reg</th><th>Phase</th><th>Blinding</th><th>Results</th><th>Score</th></tr></thead><tbody>';
+  html += '<thead><tr><th style="text-align:left;padding:4px;">Trial</th><th>NCT ID</th><th>Reference</th><th>Phase</th><th>Blinding</th><th>Results</th><th>Score</th></tr></thead><tbody>';
   for (const t of trials) {
     let score = 0;
     const hasNCT = t.nctId && /^NCT\d{8}$/.test(t.nctId);
@@ -14367,14 +14369,14 @@ function renderRegistrationScore(config) {
     if (hasPhase) score += 20;
     const isBlinded = (t.evidenceText ?? '').toLowerCase().includes('double-blind') || (t.evidenceText ?? '').toLowerCase().includes('double blind');
     if (isBlinded) score += 20;
-    const preReg = t.year && t.nctId; /* proxy: has NCT = likely pre-registered */
-    if (preReg) score += 15;
+    const hasRef = !!t.reference;
+    if (hasRef) score += 15; /* has published reference */
     const hasResults = t.outcomes && Object.keys(t.outcomes).length > 0;
     if (hasResults) score += 20;
     const sColor = score >= 80 ? '#16a34a' : score >= 60 ? '#d97706' : '#dc2626';
     html += '<tr><td style="padding:4px;font-weight:600;">' + escapeHtml(t.id) + '</td>';
     html += '<td style="text-align:center;font-family:monospace;font-size:0.7rem;">' + (hasNCT ? escapeHtml(t.nctId) : '<span style="color:#dc2626;">\u2718</span>') + '</td>';
-    html += '<td style="text-align:center;">' + (preReg ? '\u2714' : '\u2718') + '</td>';
+    html += '<td style="text-align:center;">' + (hasRef ? '\u2714' : '\u2718') + '</td>';
     html += '<td style="text-align:center;">' + escapeHtml(t.phase ?? '?') + '</td>';
     html += '<td style="text-align:center;">' + (isBlinded ? '\u2714' : '?') + '</td>';
     html += '<td style="text-align:center;">' + (hasResults ? '\u2714' : '\u2718') + '</td>';
@@ -14397,9 +14399,10 @@ function computeOutlierDetection(yi, vi, tau2, trialNames) {
   const results = [];
   let nOutliers = 0;
   for (let i = 0; i < k; i++) {
-    const ri = (yi[i] - thetaHat) / Math.sqrt(vi[i] + tau2);
     const hi = wi[i] / sumW;
-    const rstud = Math.abs(hi) < 0.999 ? ri / Math.sqrt(1 - hi) : ri;
+    /* Standardized residual with (1-hi) correction (Viechtbauer & Cheung 2010) */
+    const ri = (yi[i] - thetaHat) / Math.sqrt((vi[i] + tau2) * Math.max(1 - hi, 1e-10));
+    const rstud = ri; /* already externally standardized */
     const isOutlier2 = Math.abs(ri) > 2;
     const isOutlier3 = Math.abs(ri) > 3;
     if (isOutlier2) nOutliers++;
@@ -14563,6 +14566,8 @@ function updatePrismaProgress() {
     if (el) {
       el.style.background = s.done ? '#16a34a' : 'var(--bg-secondary)';
       el.style.color = s.done ? 'white' : 'var(--text-primary)';
+      el.setAttribute('aria-label', el.textContent.trim() + (s.done ? ' (complete)' : ' (pending)'));
+      if (s.done && !el.textContent.includes('\u2714')) el.textContent = '\u2714 ' + el.textContent.trim();
     }
   }
 }
@@ -14737,7 +14742,7 @@ function convertEffectSize() {
   let or, rr, hr, logOR;
   if (type === 'or') { or = val; logOR = Math.log(or); rr = or / (1 - cer + cer * or); hr = null; }
   else if (type === 'rr') { rr = val; or = rr * (1 - cer) / (1 - rr * cer); logOR = Math.log(or); hr = null; }
-  else if (type === 'hr') { hr = val; /* HR ≈ log(1-eer)/log(1-cer) → approximate OR via rare disease */ or = hr; rr = hr; logOR = Math.log(or); }
+  else if (type === 'hr') { hr = val; /* Convert HR→OR via survival: OR = (1-(1-CER)^HR) / (CER*(1-CER)^(HR-1)) */ const survC = Math.pow(1 - cer, hr); or = cer > 0 ? (1 - survC) / (cer * Math.pow(1 - cer, hr - 1)) : hr; rr = or / (1 - cer + cer * or); logOR = Math.log(or); }
   else if (type === 'nnt') { const ard = 1 / val; const eer = cer - ard; rr = eer > 0 ? eer / cer : 0.01; or = rr * (1 - cer) / (1 - rr * cer); logOR = Math.log(or); hr = null; }
 
   const eer = type === 'nnt' ? (cer - 1 / val) : (or * cer / (1 - cer + or * cer));
@@ -14752,7 +14757,7 @@ function convertEffectSize() {
   html += '<tr><td style="padding:4px;font-weight:600;">NNT</td><td>' + (nnt ?? 'N/A') + '</td>';
   html += '<td style="padding:4px;font-weight:600;">EER</td><td>' + (eer * 100).toFixed(2) + '%</td></tr>';
   html += '<tr><td style="padding:4px;font-weight:600;">CER</td><td>' + (cer * 100).toFixed(1) + '%</td>';
-  html += '<td style="padding:4px;font-weight:600;">Events/1000</td><td>' + Math.round(ard * 1000) + ' fewer</td></tr>';
+  html += '<td style="padding:4px;font-weight:600;">Events/1000</td><td>' + Math.round(Math.abs(ard) * 1000) + (ard >= 0 ? ' fewer' : ' more') + '</td></tr>';
   html += '</table>';
   area.innerHTML = html;
 }
@@ -14926,7 +14931,7 @@ function renderSummaryStats() {
 function exportSummaryStatsCSV() {
   const data = AppState._summaryStatsData;
   if (!data || data.length === 0) { showToast('Generate summary table first.'); return; }
-  const safeCSV = function(v) { const s = String(v); return /^[=+@\t\r]/.test(s) ? "'" + s : s; };
+  const safeCSV = function(v) { let s = String(v); if (/^[=+@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
   let csv = 'Category,Metric,Value\n';
   for (const row of data) csv += [safeCSV(row.category), safeCSV(row.metric), safeCSV(row.value)].join(',') + '\n';
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -15711,7 +15716,7 @@ function exportGradeCSV() {
     return;
   }
   const config = getConfig();
-  const safeCSV = function(v) { const s = String(v); return /^[=+@\t\r]/.test(s) ? "'" + s : s; };
+  const safeCSV = function(v) { let s = String(v); if (/^[=+@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
   let csv = 'Outcome,k,Measure,Effect,CI_Lower,CI_Upper,I2_pct,Tau2,P_value,GRADE,Significant\n';
   for (const o of outcomes) {
     csv += [safeCSV(o.key), o.k, safeCSV(o.measure), o.effect.toFixed(4), o.ciLo.toFixed(4), o.ciHi.toFixed(4),
