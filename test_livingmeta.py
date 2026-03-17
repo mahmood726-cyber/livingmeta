@@ -265,6 +265,35 @@ def run_tests():
             return r.decisionRegret.pBenefit >= 0 && r.decisionRegret.pBenefit <= 1;
         '''))
 
+        # ─── 89-99: Round 4 features (trial editor, what-if, weights, power) ───
+        ok('addUserTrial fn exists', d.execute_script(
+            'return typeof addUserTrial === "function"'))
+        ok('removeLastUserTrial fn exists', d.execute_script(
+            'return typeof removeLastUserTrial === "function"'))
+        ok('trialEditorArea container exists', d.execute_script(
+            'return document.getElementById("trialEditorArea") !== null'))
+        ok('runWhatIf fn exists', d.execute_script(
+            'return typeof runWhatIf === "function"'))
+        ok('whatIfArea container exists', d.execute_script(
+            'return document.getElementById("whatIfArea") !== null'))
+        ok('renderStudyWeights fn exists', d.execute_script(
+            'return typeof renderStudyWeights === "function"'))
+        ok('studyWeightsPlot container exists', d.execute_script(
+            'return document.getElementById("studyWeightsPlot") !== null'))
+        ok('computePowerCalc fn exists', d.execute_script(
+            'return typeof computePowerCalc === "function"'))
+        ok('power calc returns results', d.execute_script('''
+            var r = AppState.results;
+            var track = r?.trackB ?? r?.trackA;
+            if (!track) return false;
+            var pc = computePowerCalc(track);
+            return pc !== null && pc.results.length === 3 && pc.currentPower >= 0;
+        '''))
+        ok('powerCalcArea container exists', d.execute_script(
+            'return document.getElementById("powerCalcArea") !== null'))
+        ok('downloadForestPlot accepts svg', d.execute_script(
+            'return typeof downloadForestPlot === "function"'))
+
         # ─── Final: JS errors ───
         logs = d.get_log('browser')
         errors = [l for l in logs if l['level'] == 'SEVERE']
