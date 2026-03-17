@@ -417,6 +417,32 @@ def run_tests():
             return document.getElementById("pp-search") !== null && document.getElementById("pp-certify") !== null;
         '''))
 
+        # ─── 141-150: Round 9 features ───
+        ok('computeOutlierDetection fn exists', d.execute_script(
+            'return typeof computeOutlierDetection === "function"'))
+        ok('outlier detection runs', d.execute_script('''
+            var r = AppState.results; var t = r?.trackB ?? r?.trackA;
+            if (!t) return false;
+            var od = computeOutlierDetection(t.yi, t.vi, t.primary.tau2, t.trials.map(function(x){return x.name}));
+            return od !== null && od.results.length > 0;
+        '''))
+        ok('outlierDetectionArea container exists', d.execute_script(
+            'return document.getElementById("outlierDetectionArea") !== null'))
+        ok('waterfallPlot container exists', d.execute_script(
+            'return document.getElementById("waterfallPlot") !== null'))
+        ok('renderWaterfallChart fn exists', d.execute_script(
+            'return typeof renderWaterfallChart === "function"'))
+        ok('renderSearchMetrics fn exists', d.execute_script(
+            'return typeof renderSearchMetrics === "function"'))
+        ok('forestSparkline fn exists', d.execute_script(
+            'return typeof forestSparkline === "function"'))
+        ok('sparkline generates SVG', d.execute_script(
+            'return forestSparkline(0.75, 0.60, 0.95).includes("<svg")'))
+        ok('renderSessionStats fn exists', d.execute_script(
+            'return typeof renderSessionStats === "function"'))
+        ok('session stats footer exists', d.execute_script(
+            'return document.getElementById("sessionStatsFooter") !== null'))
+
         # ─── Final: JS errors ───
         logs = d.get_log('browser')
         errors = [l for l in logs if l['level'] == 'SEVERE']

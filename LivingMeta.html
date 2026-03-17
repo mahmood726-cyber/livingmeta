@@ -1276,6 +1276,7 @@
     </button>
     <span id="harvestStatus" style="margin-left:12px;font-size:0.82rem;color:var(--text-secondary);"></span>
   </div>
+  <div id="searchMetricsSummary" style="display:none;margin-bottom:12px;"></div>
   <div id="harvestDashboard" class="stub-area">
     Click "Harvest" to fetch detailed trial records from ClinicalTrials.gov API v2. Extracts: results posting status, primary outcomes, protocol dates, endpoint definitions, completion dates, and record history signals. No API key required.
   </div>
@@ -1445,6 +1446,9 @@
 
   <div class="section-header" style="margin-top:24px;">Sensitivity Forest (Multi-Method Comparison)</div>
   <div id="sensitivityForestPlot" style="min-height:300px;"></div>
+
+  <div class="section-header" style="margin-top:24px;">Study Contribution Waterfall</div>
+  <div id="waterfallPlot" style="min-height:350px;"></div>
 
   <div class="section-header" style="margin-top:24px;">Confidence Interval Method Comparison</div>
   <div id="ciComparisonArea" class="stub-area">Run synthesis first to compare CI methods (Wald, HKSJ, t-distribution, Profile Likelihood).</div>
@@ -1730,6 +1734,9 @@
 
   <div class="section-header" style="margin-top:24px;">Influence Diagnostics Suite (Viechtbauer &amp; Cheung 2010)</div>
   <div id="influenceSuiteArea" class="stub-area">Run synthesis first</div>
+
+  <div class="section-header" style="margin-top:24px;">Outlier Detection</div>
+  <div id="outlierDetectionArea" class="stub-area">Run synthesis first. Flags studies with extreme residuals, leverage, or effect sizes.</div>
 
   <div class="section-header" style="margin-top:24px;">Cook's Distance &amp; DFBETAS</div>
   <div id="cooksDistanceArea" class="stub-area">Run synthesis first for detailed influence diagnostics.</div>
@@ -4887,7 +4894,7 @@ function handleConfigChange(configId) {
   ['forestPlotContainer','funnelPlotContainer','galbraithPlot','baujatPlot','labbePlot',
    'goshPlot','doiPlot','tsaPlotContainer','predDistPlot','seqBayesPlot','cdCurvePlot',
    'subgroupForestPlot','bayesPosteriorPlot','nntCurvePlot','metaRegPlot',
-   'nmaNetworkPlot','evidenceTimelinePlot','evidenceVelocityPlot','cooksDistancePlot','sensitivityForestPlot','studyWeightsPlot','heterogeneityPie','trialGanttPlot'
+   'nmaNetworkPlot','evidenceTimelinePlot','evidenceVelocityPlot','cooksDistancePlot','sensitivityForestPlot','studyWeightsPlot','heterogeneityPie','trialGanttPlot','waterfallPlot'
   ].forEach(function(id) { var el = document.getElementById(id); if (el) { try { Plotly.purge(el); } catch(e) {} } });
   /* Render trial Gantt AFTER purge (so it's not immediately cleared) */
   if (typeof renderTrialGantt === 'function') renderTrialGantt(getConfig());
@@ -8200,6 +8207,15 @@ function runSynthesis() {
   renderExecSummary();
   // Audit log (auto-refresh)
   renderAuditLog();
+  // Outlier detection
+  const outlierResult = computeOutlierDetection(evTrack.yi, evTrack.vi, evTrack.primary?.tau2 ?? 0, (evTrack.trials ?? []).map(t => t.name));
+  renderOutlierDetection(outlierResult);
+  // Waterfall chart
+  renderWaterfallChart(evTrack);
+  // Search metrics
+  renderSearchMetrics();
+  // Session stats
+  renderSessionStats();
   // CI method comparison
   renderCIComparison(evTrack);
   // Patient risk calculator (initial render)
@@ -14161,6 +14177,166 @@ function renderMetaRegression(reg) {
 
 
 /* ═══════════════════════════════════════════════════════════════════
+   FEATURE D1: OUTLIER DETECTION DASHBOARD
+   ═══════════════════════════════════════════════════════════════════ */
+
+function computeOutlierDetection(yi, vi, tau2, trialNames) {
+  if (!yi || yi.length < 3) return null;
+  const k = yi.length;
+  const wi = vi.map(v => 1 / (v + tau2));
+  const sumW = sum(wi);
+  const thetaHat = sum(yi.map((y, i) => wi[i] * y)) / sumW;
+  const results = [];
+  let nOutliers = 0;
+  for (let i = 0; i < k; i++) {
+    const ri = (yi[i] - thetaHat) / Math.sqrt(vi[i] + tau2);
+    const hi = wi[i] / sumW;
+    const rstud = Math.abs(hi) < 0.999 ? ri / Math.sqrt(1 - hi) : ri;
+    const isOutlier2 = Math.abs(ri) > 2;
+    const isOutlier3 = Math.abs(ri) > 3;
+    if (isOutlier2) nOutliers++;
+    results.push({ name: trialNames[i] ?? ('Study ' + (i + 1)), yi: yi[i], effect: Math.exp(yi[i]),
+      residual: ri, rstudentized: rstud, leverage: hi, isOutlier2, isOutlier3 });
+  }
+  return { results, nOutliers, k, threshold2: 2, threshold3: 3 };
+}
+
+function renderOutlierDetection(od) {
+  const area = document.getElementById('outlierDetectionArea');
+  if (!area) return;
+  if (!od) { area.innerHTML = '<span style="opacity:0.6;">Need k \u2265 3</span>'; return; }
+  let html = '<div style="font-size:0.85rem;margin-bottom:8px;">';
+  if (od.nOutliers === 0) html += '<span style="color:#16a34a;font-weight:600;">\u2714 No outliers detected</span> (|z| > 2 threshold)';
+  else html += '<span style="color:#dc2626;font-weight:600;">\u26A0 ' + od.nOutliers + ' potential outlier(s)</span> with |standardized residual| > 2';
+  html += '</div>';
+  html += '<table style="width:100%;font-size:0.75rem;border-collapse:collapse;"><thead><tr><th style="text-align:left;padding:4px;">Study</th><th>Effect</th><th>Std Residual</th><th>Studentized</th><th>Leverage</th><th>Flag</th></tr></thead><tbody>';
+  for (const r of od.results) {
+    const bg = r.isOutlier3 ? 'rgba(220,38,38,0.08)' : r.isOutlier2 ? 'rgba(245,158,11,0.06)' : '';
+    html += '<tr style="background:' + bg + ';"><td style="padding:4px;font-weight:600;">' + escapeHtml(r.name) + '</td>';
+    html += '<td style="text-align:center;">' + r.effect.toFixed(3) + '</td>';
+    html += '<td style="text-align:center;' + (r.isOutlier2 ? 'color:#dc2626;font-weight:700;' : '') + '">' + r.residual.toFixed(3) + '</td>';
+    html += '<td style="text-align:center;">' + r.rstudentized.toFixed(3) + '</td>';
+    html += '<td style="text-align:center;">' + r.leverage.toFixed(3) + '</td>';
+    html += '<td style="text-align:center;">' + (r.isOutlier3 ? '\u26A0\u26A0' : r.isOutlier2 ? '\u26A0' : '\u2714') + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE D2: STUDY CONTRIBUTION WATERFALL CHART
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderWaterfallChart(trackResult) {
+  const plotDiv = document.getElementById('waterfallPlot');
+  if (!plotDiv) return;
+  if (!trackResult || !trackResult.cumulative || trackResult.cumulative.length < 2) {
+    plotDiv.innerHTML = '<div class="stub-area" style="border:none;">Run synthesis first</div>';
+    return;
+  }
+  const isDark = document.body.classList.contains('dark-mode');
+  const cum = trackResult.cumulative;
+  const measure = trackResult.measure ?? 'OR';
+  const sortedTrials = (trackResult.trials ?? []).slice().sort((a, b) => (a.year ?? 0) - (b.year ?? 0));
+  const names = sortedTrials.map(t => t.name);
+  const pooledEffects = cum.map(c => Math.exp(c.estimate));
+  /* Contribution = change from previous cumulative estimate */
+  const contributions = [pooledEffects[0] - 1]; /* first study relative to null */
+  for (let i = 1; i < pooledEffects.length; i++) contributions.push(pooledEffects[i] - pooledEffects[i - 1]);
+  const colors = contributions.map(c => c < 0 ? '#16a34a' : '#dc2626'); /* green=toward benefit, red=toward harm */
+
+  Plotly.purge(plotDiv);
+  Plotly.newPlot(plotDiv, [{
+    x: names, y: contributions, type: 'waterfall', name: 'Contribution',
+    increasing: { marker: { color: '#dc2626' } },
+    decreasing: { marker: { color: '#16a34a' } },
+    connector: { line: { color: isDark ? '#475569' : '#cbd5e1', width: 1 } },
+    text: contributions.map(c => (c > 0 ? '+' : '') + c.toFixed(3)),
+    textposition: 'outside', textfont: { size: 9 }
+  }], {
+    title: { text: 'Cumulative Contribution to Pooled ' + measure, font: { size: 14 } },
+    xaxis: { gridcolor: isDark ? '#334155' : '#e2e8f0' },
+    yaxis: { title: '\u0394 ' + measure + ' (from null)', gridcolor: isDark ? '#334155' : '#e2e8f0' },
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: isDark ? '#e2e8f0' : '#1e293b' },
+    margin: { t: 40, b: 80, l: 60, r: 20 },
+    height: Math.max(300, 30 + names.length * 25)
+  }, { responsive: true });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE D3: SEARCH METRICS SUMMARY
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderSearchMetrics() {
+  const area = document.getElementById('searchMetricsSummary');
+  if (!area) return;
+  const log = AppState.auditLog ?? [];
+  const searches = log.filter(e => e.action === 'search_ctgov' || e.action === 'search_pubmed' || e.action === 'search_openalex');
+  if (searches.length === 0) { area.style.display = 'none'; return; }
+  area.style.display = 'block';
+  const ctgovHits = searches.filter(e => e.action === 'search_ctgov').reduce((s, e) => s + (e.detail?.hits ?? 0), 0);
+  const pubmedHits = searches.filter(e => e.action === 'search_pubmed').reduce((s, e) => s + (e.detail?.hits ?? 0), 0);
+  const totalSearches = searches.length;
+  const screenLog = AppState.screenLog ?? {};
+  const included = Object.values(screenLog).filter(d => d.decision === 'include' || d.status === 'include').length;
+  const excluded = Object.values(screenLog).filter(d => d.decision === 'exclude' || d.status === 'exclude').length;
+  const totalScreened = included + excluded;
+  const yieldRate = totalScreened > 0 ? (included / totalScreened * 100).toFixed(1) : 'N/A';
+
+  let html = '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.78rem;">';
+  html += '<span>Searches: <strong>' + totalSearches + '</strong></span>';
+  if (ctgovHits > 0) html += '<span>CT.gov: <strong>' + ctgovHits + '</strong> hits</span>';
+  if (pubmedHits > 0) html += '<span>PubMed: <strong>' + pubmedHits + '</strong> hits</span>';
+  if (totalScreened > 0) html += '<span>Screened: <strong>' + totalScreened + '</strong> (' + included + ' in / ' + excluded + ' out)</span>';
+  html += '<span>Yield: <strong>' + yieldRate + '%</strong></span>';
+  html += '</div>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE D4: MINI FOREST SPARKLINES (inline SVG)
+   ═══════════════════════════════════════════════════════════════════ */
+
+function forestSparkline(effect, ciLo, ciHi, opts) {
+  const w = opts?.width ?? 80, h = opts?.height ?? 16;
+  const minX = opts?.minX ?? 0.3, maxX = opts?.maxX ?? 3;
+  const toX = function(v) { return ((Math.log(v) - Math.log(minX)) / (Math.log(maxX) - Math.log(minX))) * w; };
+  const nullX = toX(1);
+  const estX = toX(Math.max(minX, Math.min(maxX, effect)));
+  const loX = toX(Math.max(minX, ciLo));
+  const hiX = toX(Math.min(maxX, ciHi));
+  const mid = h / 2;
+  let svg = '<svg width="' + w + '" height="' + h + '" style="vertical-align:middle;">';
+  svg += '<line x1="' + nullX + '" y1="0" x2="' + nullX + '" y2="' + h + '" stroke="#94a3b8" stroke-width="1" stroke-dasharray="2,2"/>';
+  svg += '<line x1="' + loX + '" y1="' + mid + '" x2="' + hiX + '" y2="' + mid + '" stroke="#3b82f6" stroke-width="2"/>';
+  svg += '<polygon points="' + (estX-4) + ',' + mid + ' ' + estX + ',' + (mid-5) + ' ' + (estX+4) + ',' + mid + ' ' + estX + ',' + (mid+5) + '" fill="#3b82f6"/>';
+  svg += '</svg>';
+  return svg;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE D5: SESSION TIMER & PRODUCTIVITY STATS
+   ═══════════════════════════════════════════════════════════════════ */
+
+const _sessionStart = Date.now();
+
+function renderSessionStats() {
+  const footer = document.getElementById('sessionStatsFooter');
+  if (!footer) return;
+  const elapsed = Math.round((Date.now() - _sessionStart) / 1000);
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  const log = AppState.auditLog ?? [];
+  const synthCount = log.filter(e => e.action === 'run_synthesis').length;
+  const exportCount = log.filter(e => (e.action ?? '').startsWith('export_')).length;
+  const config = getConfig();
+  footer.textContent = 'Session: ' + mins + 'm ' + secs + 's | Syntheses: ' + synthCount + ' | Exports: ' + exportCount + ' | Config: ' + (config?.id ?? 'none') + ' | k=' + (config?.trials?.length ?? 0) + ' trials';
+}
+
+setInterval(renderSessionStats, 10000);
+
+/* ═══════════════════════════════════════════════════════════════════
    FEATURE C1: PRISMA WORKFLOW PROGRESS TRACKER
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -16483,5 +16659,6 @@ function renderPatientSummary() {
 setTimeout(init, 0);
 </script>
 </main>
+<footer id="sessionStatsFooter" style="padding:8px 16px;font-size:0.7rem;opacity:0.5;text-align:center;border-top:1px solid var(--border-color);margin-top:16px;"></footer>
 </body>
 </html>
