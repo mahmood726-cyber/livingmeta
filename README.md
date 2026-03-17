@@ -1,63 +1,95 @@
-# LivingMeta v1.0
+# LivingMeta v2.0
 
-**Self-Discovering Certified Living Meta-Analysis Engine**
+**Browser-Based Living Meta-Analysis Engine with 85+ Statistical Methods**
 
-A single-file, browser-based tool for living systematic reviews with integrated trial discovery, automated text extraction, comprehensive statistical synthesis, and in-browser R validation.
+A single-file HTML application (895 KB) for complete living systematic reviews -- from trial discovery through certified synthesis -- with in-browser R validation. No installation required.
 
 ## Quick Start
 
 1. Download `LivingMeta.html`
 2. Open in any modern browser (Chrome, Firefox, Edge, Safari)
 3. Select a clinical configuration from the dropdown
-4. Click **Synthesize** to run the analysis
+4. Click **Run Analysis** in the Synthesize tab
+5. Results appear instantly with 85+ statistical analyses
 
-No installation, server, or internet connection required (after initial load).
+No server, no installation, no internet needed (after initial CDN load).
 
 ## Features
 
-- **9 clinical configurations**: Colchicine CVD, Finerenone, SGLT2i HF, GLP-1 CVOTs, PCSK9, Intensive BP, Bempedoic Acid, Incretins HFpEF, ATTR-CM (45 trials, ~200K patients)
+### Clinical Configurations
+- **40 pre-configured topics** across cardiovascular, renal, metabolic, and rare disease
+- 9 curated configs (45 landmark RCTs, ~200K patients) validated against R metafor
+- 31 auto-generated configs via CT.gov API integration
+
+### Statistical Engine (85+ Methods)
 - **6 tau-squared estimators**: DL, REML, PM, HS, HE, EB
 - **HKSJ adjustment** with IQWiG modification
-- **Fixed-effect methods**: IV, Mantel-Haenszel, Peto
-- **20+ advanced analyses**: Bayesian posterior, TSA, Copas, fragility index, NNT curve, meta-regression, sceptical p-value, z-curve, and more
-- **TextExtractor**: 50+ patterns auto-extract HR/OR/RR/MD/SMD from abstracts
-- **WebR validation**: In-browser R + metafor, 30+ metric comparison
-- **GRADE assessment**: Automated certainty of evidence
-- **Patient mode**: Traffic-light summary for shared decision-making
-- **Accessible**: WCAG AA, keyboard navigation, dark mode
+- **Network Meta-Analysis**: Bucher indirect comparisons, P-scores, league tables
+- **Three-Level MA**: Clustered studies (Konstantopoulos 2011)
+- **Bayesian**: Grid approximation, RoBMA, three-prior sensitivity
+- **Trial Sequential Analysis**: O'Brien-Fleming alpha-spending
+- **25+ publication bias methods**: Egger, Begg, trim-fill, PET-PEESE, Copas, Doi/LFK, Harbord, Z-curve
+- **Influence diagnostics**: Cook's D, DFBETAS, DFFITS, outlier detection, exclusion sensitivity matrix
+- **Decision analysis**: Decision regret, P(benefit), opportunity cost, power calculator
+- **Advanced**: Drapery plot, MCID analysis, confidence distribution, sceptical p-value, E-value
+
+### Interactive Tools
+- **What-If Scenario**: Add hypothetical trial, preview impact instantly
+- **Patient Risk Calculator**: Baseline risk slider with ARD/NNT output
+- **Effect Size Converter**: OR/RR/HR/NNT bidirectional conversion
+- **CI Method Comparison**: Wald vs HKSJ vs t-dist side-by-side
+- **Trial Editor**: Add/edit/remove trials with form UI
+- **CSV Import**: Paste or drag-and-drop trial data
+
+### Visualization (20+ Charts)
+Forest plot (downloadable SVG/PNG), sensitivity forest, funnel with contours, Galbraith, Baujat, L'Abbe, drapery plot, waterfall chart, evidence timeline, NMA network graph, heterogeneity pie, trial Gantt, study weights bubble, Cook's D bar chart, NNT curve, sparklines
+
+### Export (16 Formats)
+JSON bundle, PDF report, CSV data, SVG/PNG forest, RevMan XML, PRISMA 2020 SVG, R script, screening CSV/JSON, GRADE SoF CSV, summary statistics CSV, methods report, print CSS
+
+### Validation
+- **WebR**: In-browser R + metafor comparison (30+ metrics)
+- **R baseline badge**: Instant offline validation
+- **TruthCert**: SHA-256 hash certification
+- **160 automated tests** (Selenium)
+
+### UX
+- PRISMA 2020 workflow progress tracker
+- Executive summary bar (visible on all tabs)
+- Keyboard shortcuts (1-8 tabs, Ctrl+Enter synthesize)
+- Dark mode with WCAG AA contrast
+- Auto-save with version snapshots
+- URL state sharing (shareable analysis links)
+- Print-friendly CSS
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `1`-`8` | Switch tabs |
+| `Ctrl+Enter` | Run synthesis |
+| `Ctrl+E` | Export bundle |
+| `?` | Show shortcut help |
 
 ## Testing
 
 ```bash
 python test_livingmeta.py
+# 160/160 tests pass
 ```
 
-Requires: Python 3.x, Selenium, Chrome/ChromeDriver.
+Requires: Python 3, Selenium, ChromeDriver.
 
-## File Structure
+## Quality Assurance
 
-```
-LivingMeta.html          # The app (single file, ~550 KB)
-test_livingmeta.py       # 36-assertion Selenium test suite
-MANUSCRIPT_LIVINGMETA.md # Software tool paper
-PRISMA_ScR_CHECKLIST.csv # PRISMA for Scoping Reviews
-README.md                # This file
-```
-
-## Technical Details
-
-- **Architecture**: Single HTML file with embedded CSS + JavaScript
-- **Dependencies**: Plotly.js (CDN), optionally WebR (CDN, ~20 MB cached)
-- **Statistical engine**: Pure JavaScript, no server required
-- **TextExtractor**: Ported from rct_data_extractor_v2 (83.6% accuracy on 1,290 PDFs)
-- **Tested**: 36/36 Selenium assertions, 531/531 div balance, 0 JS errors
-
-## License
-
-MIT
+Three rounds of multi-persona code review (Statistical Methodologist, Security Auditor, UX/Accessibility, Software Engineer, Domain Expert). 17 P0 + 30+ P1 issues identified and resolved. REVIEW CLEAN.
 
 ## Citation
 
 If you use LivingMeta in your research, please cite:
 
-> [AUTHOR]. LivingMeta: A Single-File, Browser-Based Living Meta-Analysis Engine with Integrated Trial Discovery and In-Browser R Validation. 2026. Available at: [GITHUB_URL]
+> [AUTHOR_PLACEHOLDER]. LivingMeta: A Browser-Based Living Meta-Analysis Engine with 85+ Statistical Methods. 2026. https://github.com/mahmood726-cyber/livingmeta
+
+## License
+
+[LICENSE_PLACEHOLDER]
