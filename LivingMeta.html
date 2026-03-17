@@ -1102,6 +1102,17 @@
   </button>
 </nav>
 
+<!-- PRISMA Workflow Progress Tracker -->
+<div id="prismaProgressBar" style="padding:4px 16px;display:flex;gap:6px;flex-wrap:wrap;font-size:0.7rem;">
+  <span id="pp-search" class="badge" style="background:var(--bg-secondary);padding:2px 8px;border-radius:10px;">1. Search</span>
+  <span id="pp-screen" class="badge" style="background:var(--bg-secondary);padding:2px 8px;border-radius:10px;">2. Screen</span>
+  <span id="pp-extract" class="badge" style="background:var(--bg-secondary);padding:2px 8px;border-radius:10px;">3. Extract</span>
+  <span id="pp-synthesize" class="badge" style="background:var(--bg-secondary);padding:2px 8px;border-radius:10px;">4. Synthesize</span>
+  <span id="pp-bias" class="badge" style="background:var(--bg-secondary);padding:2px 8px;border-radius:10px;">5. Bias</span>
+  <span id="pp-grade" class="badge" style="background:var(--bg-secondary);padding:2px 8px;border-radius:10px;">6. GRADE</span>
+  <span id="pp-certify" class="badge" style="background:var(--bg-secondary);padding:2px 8px;border-radius:10px;">7. Certify</span>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════════════════════
      TAB PANELS
      ═══════════════════════════════════════════════════════════════════════ -->
@@ -1167,7 +1178,12 @@
   <div class="section-header" style="margin-top:24px;">Import Trials from CSV</div>
   <div class="card" style="padding:12px;">
     <p style="font-size:0.78rem;opacity:0.7;margin-bottom:8px;">Paste CSV with columns: ID, Year, nTreatment, nControl, Events_Tx, Events_Ctrl, HR, HR_LCI, HR_UCI (header row required)</p>
-    <textarea id="csvImportArea" rows="5" style="width:100%;font-family:monospace;font-size:0.78rem;border:1px solid var(--border-color);border-radius:6px;padding:8px;background:var(--bg-secondary);color:var(--text-primary);resize:vertical;" placeholder="ID,Year,nTreatment,nControl,Events_Tx,Events_Ctrl,HR,HR_LCI,HR_UCI&#10;EXAMPLE-2024,2024,500,500,50,70,0.80,0.65,0.98"></textarea>
+    <div id="csvDropZone" style="border:2px dashed var(--border-color);border-radius:8px;padding:4px;transition:border-color 0.2s;"
+      ondragover="event.preventDefault();this.style.borderColor='var(--accent)';"
+      ondragleave="this.style.borderColor='var(--border-color)';"
+      ondrop="event.preventDefault();this.style.borderColor='var(--border-color)';handleCSVDrop(event);">
+      <textarea id="csvImportArea" rows="5" style="width:100%;font-family:monospace;font-size:0.78rem;border:none;padding:8px;background:transparent;color:var(--text-primary);resize:vertical;" placeholder="Drag &amp; drop a .csv file here, or paste data:&#10;ID,Year,nTreatment,nControl,Events_Tx,Events_Ctrl,HR,HR_LCI,HR_UCI&#10;EXAMPLE-2024,2024,500,500,50,70,0.80,0.65,0.98"></textarea>
+    </div>
     <div style="display:flex;gap:8px;margin-top:8px;">
       <button class="btn btn-primary" onclick="importTrialsCSV()" style="font-size:0.8rem;">Import CSV</button>
       <span id="csv-import-status" style="font-size:0.8rem;opacity:0.6;align-self:center;"></span>
@@ -1408,9 +1424,12 @@
   </div>
 
   <div class="section-header" style="margin-top: 24px;">Forest Plot</div>
-  <div style="display:flex;gap:8px;margin-bottom:8px;">
+  <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
     <button class="btn btn-outline" onclick="downloadForestPlot('svg')" style="font-size:0.75rem;">Download SVG</button>
     <button class="btn btn-outline" onclick="downloadForestPlot('png')" style="font-size:0.75rem;">Download PNG</button>
+    <span style="border-left:1px solid var(--border-color);height:20px;align-self:center;"></span>
+    <label style="font-size:0.72rem;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="forest-show-pi" checked onchange="toggleForestAnnotation()"> PI Diamond</label>
+    <label style="font-size:0.72rem;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="forest-show-weights" checked onchange="toggleForestAnnotation()"> Weights</label>
   </div>
   <div class="plot-container" id="forestPlotContainer">
     <div class="stub-area" style="border: none; min-height: 480px; display: flex; align-items: center; justify-content: center;">
@@ -1426,6 +1445,9 @@
 
   <div class="section-header" style="margin-top:24px;">Sensitivity Forest (Multi-Method Comparison)</div>
   <div id="sensitivityForestPlot" style="min-height:300px;"></div>
+
+  <div class="section-header" style="margin-top:24px;">Confidence Interval Method Comparison</div>
+  <div id="ciComparisonArea" class="stub-area">Run synthesis first to compare CI methods (Wald, HKSJ, t-distribution, Profile Likelihood).</div>
 
   <div class="section-header" style="margin-top:24px;">Study Weights Visualization</div>
   <div id="studyWeightsPlot" style="min-height:350px;"></div>
@@ -1747,6 +1769,16 @@
     <div id="methodsParagraph" class="stub-area" style="font-size:0.85rem;line-height:1.6;white-space:pre-wrap;max-height:400px;overflow-y:auto;">
       Run synthesis first to generate methods text.
     </div>
+  </div>
+
+  <div class="section-header" style="margin-top:24px;">Patient Risk Calculator</div>
+  <div class="card" style="padding:12px;">
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px;">
+      <div><label style="font-size:0.72rem;font-weight:600;">Baseline Risk (%)</label>
+        <input type="range" id="risk-cer" min="1" max="50" value="10" oninput="computePatientRisk()" style="width:120px;">
+        <span id="risk-cer-val" style="font-size:0.8rem;font-weight:600;">10%</span></div>
+    </div>
+    <div id="patientRiskResults" class="stub-area" style="border:none;font-size:0.82rem;">Run synthesis first, then adjust baseline risk slider.</div>
   </div>
 
   <div class="section-header" style="margin-top:24px;">Summary Statistics (All Methods)</div>
@@ -8168,6 +8200,12 @@ function runSynthesis() {
   renderExecSummary();
   // Audit log (auto-refresh)
   renderAuditLog();
+  // CI method comparison
+  renderCIComparison(evTrack);
+  // Patient risk calculator (initial render)
+  computePatientRisk();
+  // PRISMA progress tracker
+  if (typeof updatePrismaProgress === 'function') updatePrismaProgress();
   // Auto-save snapshot
   if (typeof autoSaveSnapshot === 'function') autoSaveSnapshot();
 
@@ -14121,6 +14159,181 @@ function renderMetaRegression(reg) {
   }
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE C1: PRISMA WORKFLOW PROGRESS TRACKER
+   ═══════════════════════════════════════════════════════════════════ */
+
+function updatePrismaProgress() {
+  const steps = [
+    { id: 'pp-search', done: (AppState.auditLog ?? []).some(e => e.action === 'search_ctgov' || e.action === 'search_pubmed') },
+    { id: 'pp-screen', done: Object.keys(AppState.screenLog ?? {}).length >= 1 },
+    { id: 'pp-extract', done: Object.keys(AppState.extractVerified ?? {}).length >= 1 || (AppState.results?.trackA || AppState.results?.trackB) },
+    { id: 'pp-synthesize', done: !!(AppState.results?.trackA || AppState.results?.trackB) },
+    { id: 'pp-bias', done: !!(AppState.results?.trackB?.bias || AppState.results?.trackA?.bias) },
+    { id: 'pp-grade', done: !!AppState.results?.grade },
+    { id: 'pp-certify', done: !!AppState.certBundle }
+  ];
+  for (const s of steps) {
+    const el = document.getElementById(s.id);
+    if (el) {
+      el.style.background = s.done ? '#16a34a' : 'var(--bg-secondary)';
+      el.style.color = s.done ? 'white' : 'var(--text-primary)';
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE C2: CI METHOD COMPARISON TABLE
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderCIComparison(trackResult) {
+  const area = document.getElementById('ciComparisonArea');
+  if (!area) return;
+  if (!trackResult || !trackResult.primary) { area.innerHTML = '<span style="opacity:0.6;">Run synthesis first</span>'; return; }
+
+  const confLevel = AppState.settings?.confLevel ?? 0.95;
+  const confPct = (confLevel * 100).toFixed(0);
+  const est = trackResult.primary.estimate;
+  const methods = [];
+
+  /* Wald (normal, no HKSJ) */
+  const tau2 = trackResult.primary.tau2 ?? 0;
+  const peWald = PooledEstimate(trackResult.yi, trackResult.vi, tau2, { hksj: false, confLevel });
+  methods.push({ name: 'Wald (z-based)', lo: Math.exp(peWald.ci[0]), hi: Math.exp(peWald.ci[1]), width: Math.exp(peWald.ci[1]) - Math.exp(peWald.ci[0]) });
+
+  /* HKSJ */
+  const peHKSJ = PooledEstimate(trackResult.yi, trackResult.vi, tau2, { hksj: true, confLevel });
+  methods.push({ name: 'HKSJ (t-based)', lo: Math.exp(peHKSJ.ci[0]), hi: Math.exp(peHKSJ.ci[1]), width: Math.exp(peHKSJ.ci[1]) - Math.exp(peHKSJ.ci[0]) });
+
+  /* t-distribution (df = k-1) */
+  const k = trackResult.k;
+  const se = trackResult.primary.se;
+  const tCrit = k > 2 ? tQuantile(1 - (1 - confLevel) / 2, k - 1) : normalQuantile(1 - (1 - confLevel) / 2);
+  methods.push({ name: 't-distribution (df=' + (k-1) + ')', lo: Math.exp(est - tCrit * se), hi: Math.exp(est + tCrit * se), width: Math.exp(est + tCrit * se) - Math.exp(est - tCrit * se) });
+
+  /* Profile Likelihood (if available) */
+  const profLik = trackResult.primary.profLikCI ?? null;
+  if (profLik) {
+    methods.push({ name: 'Profile Likelihood', lo: Math.exp(profLik[0]), hi: Math.exp(profLik[1]), width: Math.exp(profLik[1]) - Math.exp(profLik[0]) });
+  }
+
+  const widths = methods.map(m => m.width);
+  const minW = Math.min(...widths), maxW = Math.max(...widths);
+
+  let html = '<table style="width:100%;font-size:0.82rem;border-collapse:collapse;">';
+  html += '<thead><tr><th style="text-align:left;padding:6px;">CI Method</th><th>' + confPct + '% CI Lower</th><th>' + confPct + '% CI Upper</th><th>Width</th><th>Relative</th></tr></thead><tbody>';
+  for (const m of methods) {
+    const isWidest = m.width === maxW;
+    const isNarrowest = m.width === minW;
+    const badge = isWidest ? ' <span style="color:#dc2626;font-size:0.7rem;">(widest)</span>' : isNarrowest ? ' <span style="color:#16a34a;font-size:0.7rem;">(narrowest)</span>' : '';
+    html += '<tr><td style="padding:6px;font-weight:600;">' + escapeHtml(m.name) + badge + '</td>';
+    html += '<td style="text-align:center;">' + m.lo.toFixed(4) + '</td>';
+    html += '<td style="text-align:center;">' + m.hi.toFixed(4) + '</td>';
+    html += '<td style="text-align:center;">' + m.width.toFixed(4) + '</td>';
+    const barPct = maxW > 0 ? Math.round(m.width / maxW * 100) : 0;
+    html += '<td style="text-align:center;"><div style="width:80px;height:6px;background:var(--border-color);border-radius:3px;display:inline-block;overflow:hidden;vertical-align:middle;"><div style="width:' + barPct + '%;height:100%;background:#3b82f6;border-radius:3px;"></div></div></td></tr>';
+  }
+  html += '</tbody></table>';
+  html += '<div style="font-size:0.72rem;opacity:0.5;margin-top:4px;">HKSJ typically produces wider CIs than Wald, especially for small k. The IQWiG modification prevents paradoxical narrowing when Q/(k-1) &lt; 1.</div>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE C3: PATIENT RISK CALCULATOR
+   ═══════════════════════════════════════════════════════════════════ */
+
+function computePatientRisk() {
+  const area = document.getElementById('patientRiskResults');
+  const slider = document.getElementById('risk-cer');
+  const valLabel = document.getElementById('risk-cer-val');
+  if (!area || !slider) return;
+  const cer = parseInt(slider.value) / 100;
+  if (valLabel) valLabel.textContent = (cer * 100).toFixed(0) + '%';
+
+  const r = AppState.results;
+  const track = r?.trackB ?? r?.trackA;
+  if (!track || !track.primary) { area.innerHTML = '<span style="opacity:0.6;">Run synthesis first</span>'; return; }
+
+  const or = Math.exp(track.primary.estimate);
+  const orLo = Math.exp(track.primary.ci[0]);
+  const orHi = Math.exp(track.primary.ci[1]);
+  const measure = track.measure ?? 'OR';
+
+  /* EER from OR: EER = OR * CER / (1 - CER + OR * CER) */
+  const eer = or * cer / (1 - cer + or * cer);
+  const eerLo = orLo * cer / (1 - cer + orLo * cer);
+  const eerHi = orHi * cer / (1 - cer + orHi * cer);
+  const ard = cer - eer;
+  const nnt = ard > 0 ? Math.ceil(1 / ard) : (ard < 0 ? Math.ceil(1 / Math.abs(ard)) : null);
+  const nntLabel = ard > 0 ? 'NNT' : (ard < 0 ? 'NNH' : null);
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;">';
+  html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
+  html += '<div style="font-size:1.2rem;font-weight:700;">' + (cer * 100).toFixed(1) + '%</div>';
+  html += '<div style="font-size:0.7rem;opacity:0.6;">Baseline Risk (CER)</div></div>';
+
+  html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;border-left:3px solid #3b82f6;">';
+  html += '<div style="font-size:1.2rem;font-weight:700;color:#3b82f6;">' + (eer * 100).toFixed(1) + '%</div>';
+  html += '<div style="font-size:0.7rem;opacity:0.6;">Risk with Treatment (EER)</div>';
+  html += '<div style="font-size:0.68rem;opacity:0.5;">' + (eerLo * 100).toFixed(1) + '\u2013' + (eerHi * 100).toFixed(1) + '%</div></div>';
+
+  const ardColor = ard > 0 ? '#16a34a' : ard < 0 ? '#dc2626' : '#64748b';
+  html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;border-left:3px solid ' + ardColor + ';">';
+  html += '<div style="font-size:1.2rem;font-weight:700;color:' + ardColor + ';">' + (ard > 0 ? '-' : '+') + (Math.abs(ard) * 100).toFixed(1) + '%</div>';
+  html += '<div style="font-size:0.7rem;opacity:0.6;">Absolute Risk ' + (ard > 0 ? 'Reduction' : 'Increase') + '</div></div>';
+
+  if (nnt != null) {
+    html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
+    html += '<div style="font-size:1.2rem;font-weight:700;">' + nnt + '</div>';
+    html += '<div style="font-size:0.7rem;opacity:0.6;">' + nntLabel + '</div></div>';
+  }
+
+  html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
+  html += '<div style="font-size:1.2rem;font-weight:700;">' + Math.round(Math.abs(ard) * 1000) + '</div>';
+  html += '<div style="font-size:0.7rem;opacity:0.6;">' + (ard > 0 ? 'Fewer' : 'More') + ' events per 1,000</div></div>';
+  html += '</div>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE C4: FOREST PLOT ANNOTATION TOGGLE
+   ═══════════════════════════════════════════════════════════════════ */
+
+function toggleForestAnnotation() {
+  /* Re-render forest plot with current toggle state */
+  const r = AppState.results;
+  const track = r?.trackB ?? r?.trackA;
+  if (!track) return;
+  const showPI = document.getElementById('forest-show-pi')?.checked ?? true;
+  const showWeights = document.getElementById('forest-show-weights')?.checked ?? true;
+  /* Store prefs in AppState for render function to read */
+  AppState._forestPrefs = { showPI, showWeights };
+  renderForestPlot(track);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE C5: DRAG-AND-DROP CSV FILE UPLOAD
+   ═══════════════════════════════════════════════════════════════════ */
+
+function handleCSVDrop(event) {
+  const files = event.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+  const file = files[0];
+  if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
+    showToast('Please drop a .csv or .txt file.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const textarea = document.getElementById('csvImportArea');
+    if (textarea) {
+      textarea.value = e.target.result;
+      showToast('File "' + file.name + '" loaded. Click Import CSV to process.');
+    }
+  };
+  reader.readAsText(file);
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    FEATURE B1: EFFECT SIZE CONVERTER

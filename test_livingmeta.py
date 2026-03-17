@@ -388,6 +388,35 @@ def run_tests():
         ok('snapshot selector container exists', d.execute_script(
             'return document.getElementById("snapshotSelector") !== null'))
 
+        # ─── 131-140: Round 8 features ───
+        ok('updatePrismaProgress fn exists', d.execute_script(
+            'return typeof updatePrismaProgress === "function"'))
+        ok('PRISMA tracker shows synthesize done', d.execute_script('''
+            var el = document.getElementById("pp-synthesize");
+            return el !== null && (el.style.background.includes("16a34a") || el.style.backgroundColor.includes("22") || el.style.color === "white");
+        '''))
+        ok('renderCIComparison fn exists', d.execute_script(
+            'return typeof renderCIComparison === "function"'))
+        ok('CI comparison shows HKSJ', d.execute_script('''
+            var area = document.getElementById("ciComparisonArea");
+            return area !== null && area.innerHTML.includes("HKSJ");
+        '''))
+        ok('computePatientRisk fn exists', d.execute_script(
+            'return typeof computePatientRisk === "function"'))
+        ok('patient risk shows EER', d.execute_script('''
+            var area = document.getElementById("patientRiskResults");
+            return area !== null && area.innerHTML.includes("EER");
+        '''))
+        ok('toggleForestAnnotation fn exists', d.execute_script(
+            'return typeof toggleForestAnnotation === "function"'))
+        ok('handleCSVDrop fn exists', d.execute_script(
+            'return typeof handleCSVDrop === "function"'))
+        ok('csvDropZone container exists', d.execute_script(
+            'return document.getElementById("csvDropZone") !== null'))
+        ok('PRISMA progress badges exist', d.execute_script('''
+            return document.getElementById("pp-search") !== null && document.getElementById("pp-certify") !== null;
+        '''))
+
         # ─── Final: JS errors ───
         logs = d.get_log('browser')
         errors = [l for l in logs if l['level'] == 'SEVERE']
