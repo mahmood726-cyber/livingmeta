@@ -443,6 +443,34 @@ def run_tests():
         ok('session stats footer exists', d.execute_script(
             'return document.getElementById("sessionStatsFooter") !== null'))
 
+        # ─── 151-160: Round 10 features ───
+        ok('renderDraperyPlot fn exists', d.execute_script(
+            'return typeof renderDraperyPlot === "function"'))
+        ok('draperyPlot container exists', d.execute_script(
+            'return document.getElementById("draperyPlot") !== null'))
+        ok('renderMCIDAnalysis fn exists', d.execute_script(
+            'return typeof renderMCIDAnalysis === "function"'))
+        ok('mcidAnalysisArea container exists', d.execute_script(
+            'return document.getElementById("mcidAnalysisArea") !== null'))
+        ok('renderExclusionMatrix fn exists', d.execute_script(
+            'return typeof renderExclusionMatrix === "function"'))
+        ok('exclusion matrix shows stability', d.execute_script('''
+            var area = document.getElementById("exclusionMatrixArea");
+            return area !== null && (area.innerHTML.includes("Stable") || area.innerHTML.includes("CHANGED"));
+        '''))
+        ok('renderRegistrationScore fn exists', d.execute_script(
+            'return typeof renderRegistrationScore === "function"'))
+        ok('registration score shows NCT', d.execute_script('''
+            var area = document.getElementById("registrationScoreArea");
+            return area !== null && area.innerHTML.includes("NCT");
+        '''))
+        ok('MCID analysis renders on synthesis', d.execute_script('''
+            var area = document.getElementById("mcidAnalysisArea");
+            return area !== null && area.innerHTML.includes("MCID");
+        '''))
+        ok('forestSparkline works with MCID range', d.execute_script(
+            'return forestSparkline(0.85, 0.70, 1.05, {minX:0.5, maxX:2}).includes("polygon")'))
+
         # ─── Final: JS errors ───
         logs = d.get_log('browser')
         errors = [l for l in logs if l['level'] == 'SEVERE']

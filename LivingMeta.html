@@ -1447,6 +1447,18 @@
   <div class="section-header" style="margin-top:24px;">Sensitivity Forest (Multi-Method Comparison)</div>
   <div id="sensitivityForestPlot" style="min-height:300px;"></div>
 
+  <div class="section-header" style="margin-top:24px;">Drapery Plot (P-value Function)</div>
+  <div id="draperyPlot" style="min-height:350px;"></div>
+
+  <div class="section-header" style="margin-top:24px;">MCID Threshold Analysis</div>
+  <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px;">
+    <div><label style="font-size:0.72rem;font-weight:600;">MCID (OR/HR scale)</label><input type="number" id="mcid-value" class="form-select" step="0.05" value="0.90" style="width:80px;" oninput="renderMCIDAnalysis()"></div>
+  </div>
+  <div id="mcidAnalysisArea" class="stub-area">Run synthesis and set MCID to see how many studies show clinically meaningful effects.</div>
+
+  <div class="section-header" style="margin-top:24px;">Exclusion Sensitivity Matrix</div>
+  <div id="exclusionMatrixArea" class="stub-area">Run synthesis first. Shows how excluding each study changes key metrics.</div>
+
   <div class="section-header" style="margin-top:24px;">Study Contribution Waterfall</div>
   <div id="waterfallPlot" style="min-height:350px;"></div>
 
@@ -1734,6 +1746,9 @@
 
   <div class="section-header" style="margin-top:24px;">Influence Diagnostics Suite (Viechtbauer &amp; Cheung 2010)</div>
   <div id="influenceSuiteArea" class="stub-area">Run synthesis first</div>
+
+  <div class="section-header" style="margin-top:24px;">Trial Registration Quality</div>
+  <div id="registrationScoreArea" class="stub-area">Run synthesis first. Scores each trial's CT.gov registration completeness.</div>
 
   <div class="section-header" style="margin-top:24px;">Outlier Detection</div>
   <div id="outlierDetectionArea" class="stub-area">Run synthesis first. Flags studies with extreme residuals, leverage, or effect sizes.</div>
@@ -4894,7 +4909,7 @@ function handleConfigChange(configId) {
   ['forestPlotContainer','funnelPlotContainer','galbraithPlot','baujatPlot','labbePlot',
    'goshPlot','doiPlot','tsaPlotContainer','predDistPlot','seqBayesPlot','cdCurvePlot',
    'subgroupForestPlot','bayesPosteriorPlot','nntCurvePlot','metaRegPlot',
-   'nmaNetworkPlot','evidenceTimelinePlot','evidenceVelocityPlot','cooksDistancePlot','sensitivityForestPlot','studyWeightsPlot','heterogeneityPie','trialGanttPlot','waterfallPlot'
+   'nmaNetworkPlot','evidenceTimelinePlot','evidenceVelocityPlot','cooksDistancePlot','sensitivityForestPlot','studyWeightsPlot','heterogeneityPie','trialGanttPlot','waterfallPlot','draperyPlot'
   ].forEach(function(id) { var el = document.getElementById(id); if (el) { try { Plotly.purge(el); } catch(e) {} } });
   /* Render trial Gantt AFTER purge (so it's not immediately cleared) */
   if (typeof renderTrialGantt === 'function') renderTrialGantt(getConfig());
@@ -8207,6 +8222,14 @@ function runSynthesis() {
   renderExecSummary();
   // Audit log (auto-refresh)
   renderAuditLog();
+  // Drapery plot
+  renderDraperyPlot(evTrack);
+  // MCID analysis
+  renderMCIDAnalysis();
+  // Exclusion sensitivity matrix
+  renderExclusionMatrix(evTrack);
+  // Registration quality
+  renderRegistrationScore(config);
   // Outlier detection
   const outlierResult = computeOutlierDetection(evTrack.yi, evTrack.vi, evTrack.primary?.tau2 ?? 0, (evTrack.trials ?? []).map(t => t.name));
   renderOutlierDetection(outlierResult);
@@ -14175,6 +14198,191 @@ function renderMetaRegression(reg) {
   }
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE E1: DRAPERY PLOT (Rücker & Schwarzer 2020)
+   P-value function across all possible null hypotheses.
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderDraperyPlot(trackResult) {
+  const plotDiv = document.getElementById('draperyPlot');
+  if (!plotDiv) return;
+  if (!trackResult || !trackResult.primary) {
+    plotDiv.innerHTML = '<div class="stub-area" style="border:none;">Run synthesis first</div>';
+    return;
+  }
+  const isDark = document.body.classList.contains('dark-mode');
+  const est = trackResult.primary.estimate;
+  const se = trackResult.primary.se;
+  const measure = trackResult.measure ?? 'OR';
+
+  /* Compute p-value for each possible null hypothesis mu0 */
+  const nPoints = 200;
+  const range = 3 * se;
+  const mu0s = Array.from({ length: nPoints }, (_, i) => est - range + (2 * range * i / (nPoints - 1)));
+  const pvals = mu0s.map(mu0 => 2 * (1 - normalCDF(Math.abs((est - mu0) / se))));
+  const effects = mu0s.map(m => Math.exp(m));
+
+  const traces = [
+    { x: effects, y: pvals, mode: 'lines', name: 'P-value function', line: { color: '#3b82f6', width: 2.5 } },
+    /* Significance bands */
+    { x: [effects[0], effects[effects.length - 1]], y: [0.05, 0.05], mode: 'lines', name: 'p=0.05', line: { color: '#dc2626', dash: 'dash', width: 1 } },
+    { x: [effects[0], effects[effects.length - 1]], y: [0.10, 0.10], mode: 'lines', name: 'p=0.10', line: { color: '#d97706', dash: 'dot', width: 1 } },
+    /* Vertical line at pooled estimate */
+    { x: [Math.exp(est), Math.exp(est)], y: [0, 1], mode: 'lines', name: 'Pooled', line: { color: '#16a34a', width: 1.5, dash: 'dashdot' } },
+    /* Vertical line at null */
+    { x: [1, 1], y: [0, 1], mode: 'lines', name: 'Null', line: { color: isDark ? '#475569' : '#94a3b8', width: 1, dash: 'dot' }, showlegend: false }
+  ];
+
+  Plotly.purge(plotDiv);
+  Plotly.newPlot(plotDiv, traces, {
+    title: { text: 'Drapery Plot \u2014 P-value Function (R\u00FCcker & Schwarzer 2020)', font: { size: 14 } },
+    xaxis: { title: 'Hypothesized ' + measure, type: 'log', gridcolor: isDark ? '#334155' : '#e2e8f0' },
+    yaxis: { title: 'P-value', range: [0, 1], gridcolor: isDark ? '#334155' : '#e2e8f0' },
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: isDark ? '#e2e8f0' : '#1e293b' },
+    legend: { x: 0.01, y: 0.99 }, margin: { t: 40, b: 50, l: 50, r: 20 }
+  }, { responsive: true });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE E2: MCID THRESHOLD ANALYSIS
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderMCIDAnalysis() {
+  const area = document.getElementById('mcidAnalysisArea');
+  if (!area) return;
+  const r = AppState.results;
+  const track = r?.trackB ?? r?.trackA;
+  if (!track || !track.yi) { area.innerHTML = '<span style="opacity:0.6;">Run synthesis first</span>'; return; }
+
+  const mcid = parseFloat(document.getElementById('mcid-value')?.value);
+  if (!isFinite(mcid) || mcid <= 0) { area.innerHTML = '<span style="opacity:0.6;">Enter valid MCID</span>'; return; }
+
+  const logMCID = Math.log(mcid);
+  const measure = track.measure ?? 'OR';
+  const trials = track.trials ?? [];
+  let nExceed = 0, nMeaningful = 0;
+
+  for (let i = 0; i < track.yi.length; i++) {
+    if (track.yi[i] < logMCID) nExceed++; /* more protective than MCID */
+  }
+  /* Pooled: does the pooled estimate exceed MCID? */
+  const pooledExceeds = track.primary.estimate < logMCID;
+  /* CI: does the entire CI fall beyond MCID? */
+  const ciExceeds = track.primary.ci[1] < logMCID;
+  /* Proportion using predictive distribution */
+  const tau2 = track.primary.tau2 ?? 0;
+  const predSE = Math.sqrt(track.primary.se * track.primary.se + tau2);
+  const pExceed = normalCDF((logMCID - track.primary.estimate) / predSE);
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:8px;">';
+  html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
+  html += '<div style="font-size:1.1rem;font-weight:700;">' + mcid.toFixed(2) + '</div>';
+  html += '<div style="font-size:0.7rem;opacity:0.6;">MCID (' + measure + ')</div></div>';
+  html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
+  html += '<div style="font-size:1.1rem;font-weight:700;">' + nExceed + '/' + track.yi.length + '</div>';
+  html += '<div style="font-size:0.7rem;opacity:0.6;">Studies exceeding MCID</div></div>';
+  html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
+  const poolColor = pooledExceeds ? '#16a34a' : '#dc2626';
+  html += '<div style="font-size:1.1rem;font-weight:700;color:' + poolColor + ';">' + (pooledExceeds ? '\u2714 Yes' : '\u2718 No') + '</div>';
+  html += '<div style="font-size:0.7rem;opacity:0.6;">Pooled exceeds MCID</div></div>';
+  html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
+  const ciColor = ciExceeds ? '#16a34a' : '#d97706';
+  html += '<div style="font-size:1.1rem;font-weight:700;color:' + ciColor + ';">' + (ciExceeds ? '\u2714 CI beyond' : '\u2718 CI crosses') + '</div>';
+  html += '<div style="font-size:0.7rem;opacity:0.6;">Entire CI beyond MCID</div></div>';
+  html += '<div style="background:var(--bg-card);padding:10px;border-radius:6px;text-align:center;">';
+  html += '<div style="font-size:1.1rem;font-weight:700;">' + (pExceed * 100).toFixed(1) + '%</div>';
+  html += '<div style="font-size:0.7rem;opacity:0.6;">P(future study exceeds MCID)</div></div>';
+  html += '</div>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE E3: EXCLUSION SENSITIVITY MATRIX
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderExclusionMatrix(trackResult) {
+  const area = document.getElementById('exclusionMatrixArea');
+  if (!area) return;
+  if (!trackResult || !trackResult.yi || trackResult.yi.length < 3) { area.innerHTML = '<span style="opacity:0.6;">Need k \u2265 3</span>'; return; }
+
+  const k = trackResult.k;
+  const method = AppState.settings?.tau2Method ?? 'DL';
+  const confLevel = AppState.settings?.confLevel ?? 0.95;
+  const trials = trackResult.trials ?? [];
+  const fullEst = Math.exp(trackResult.primary.estimate);
+  const fullI2 = trackResult.primary.I2;
+  const fullSig = Math.exp(trackResult.primary.ci[1]) < 1 || Math.exp(trackResult.primary.ci[0]) > 1;
+  const rows = [];
+
+  for (let i = 0; i < k; i++) {
+    const yiLoo = trackResult.yi.filter((_, j) => j !== i);
+    const viLoo = trackResult.vi.filter((_, j) => j !== i);
+    const tau2Fn = Tau2Estimators[method] ?? Tau2Estimators.DL;
+    const tau2Loo = tau2Fn(yiLoo, viLoo).tau2;
+    const peLoo = PooledEstimate(yiLoo, viLoo, tau2Loo, { hksj: AppState.settings?.useHKSJ ?? false, confLevel });
+    const estLoo = Math.exp(peLoo.estimate);
+    const sigLoo = Math.exp(peLoo.ci[1]) < 1 || Math.exp(peLoo.ci[0]) > 1;
+    const sigChanged = sigLoo !== fullSig;
+    rows.push({ name: trials[i]?.name ?? ('Study ' + (i + 1)), est: estLoo, I2: peLoo.I2, sig: sigLoo, sigChanged,
+      deltaEst: estLoo - fullEst, deltaI2: peLoo.I2 - fullI2 });
+  }
+
+  let html = '<table style="width:100%;font-size:0.75rem;border-collapse:collapse;">';
+  html += '<thead><tr><th style="text-align:left;padding:4px;">Excluded Study</th><th>Effect</th><th>\u0394 Effect</th><th>I\u00B2 (%)</th><th>\u0394 I\u00B2</th><th>Sig?</th><th>Conclusion Change</th></tr></thead><tbody>';
+  for (const r of rows) {
+    const changeBg = r.sigChanged ? 'rgba(220,38,38,0.06)' : '';
+    html += '<tr style="background:' + changeBg + ';"><td style="padding:4px;font-weight:600;">' + escapeHtml(r.name) + '</td>';
+    html += '<td style="text-align:center;">' + r.est.toFixed(3) + '</td>';
+    html += '<td style="text-align:center;color:' + (Math.abs(r.deltaEst) > 0.02 ? '#dc2626' : 'inherit') + ';">' + (r.deltaEst > 0 ? '+' : '') + r.deltaEst.toFixed(3) + '</td>';
+    html += '<td style="text-align:center;">' + r.I2.toFixed(0) + '</td>';
+    html += '<td style="text-align:center;color:' + (Math.abs(r.deltaI2) > 10 ? '#d97706' : 'inherit') + ';">' + (r.deltaI2 > 0 ? '+' : '') + r.deltaI2.toFixed(0) + '</td>';
+    html += '<td style="text-align:center;">' + (r.sig ? '\u2714' : '\u2718') + '</td>';
+    html += '<td style="text-align:center;font-weight:' + (r.sigChanged ? '700;color:#dc2626' : '400') + ';">' + (r.sigChanged ? '\u26A0 CHANGED' : 'Stable') + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  const nChanged = rows.filter(r => r.sigChanged).length;
+  html += '<div style="font-size:0.78rem;margin-top:8px;"><strong>Robustness:</strong> ' + (nChanged === 0 ? '<span style="color:#16a34a;">Conclusion stable regardless of which study is excluded</span>' : '<span style="color:#dc2626;">' + nChanged + '/' + k + ' exclusions change the conclusion</span>') + '</div>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE E4: TRIAL REGISTRATION QUALITY SCORE
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderRegistrationScore(config) {
+  const area = document.getElementById('registrationScoreArea');
+  if (!area) return;
+  if (!config || !config.trials) { area.innerHTML = '<span style="opacity:0.6;">No trial data</span>'; return; }
+
+  const trials = config.trials;
+  let html = '<table style="width:100%;font-size:0.75rem;border-collapse:collapse;">';
+  html += '<thead><tr><th style="text-align:left;padding:4px;">Trial</th><th>NCT ID</th><th>Pre-reg</th><th>Phase</th><th>Blinding</th><th>Results</th><th>Score</th></tr></thead><tbody>';
+  for (const t of trials) {
+    let score = 0;
+    const hasNCT = t.nctId && /^NCT\d{8}$/.test(t.nctId);
+    if (hasNCT) score += 25;
+    const hasPhase = t.phase && t.phase.includes('3');
+    if (hasPhase) score += 20;
+    const isBlinded = (t.evidenceText ?? '').toLowerCase().includes('double-blind') || (t.evidenceText ?? '').toLowerCase().includes('double blind');
+    if (isBlinded) score += 20;
+    const preReg = t.year && t.nctId; /* proxy: has NCT = likely pre-registered */
+    if (preReg) score += 15;
+    const hasResults = t.outcomes && Object.keys(t.outcomes).length > 0;
+    if (hasResults) score += 20;
+    const sColor = score >= 80 ? '#16a34a' : score >= 60 ? '#d97706' : '#dc2626';
+    html += '<tr><td style="padding:4px;font-weight:600;">' + escapeHtml(t.id) + '</td>';
+    html += '<td style="text-align:center;font-family:monospace;font-size:0.7rem;">' + (hasNCT ? escapeHtml(t.nctId) : '<span style="color:#dc2626;">\u2718</span>') + '</td>';
+    html += '<td style="text-align:center;">' + (preReg ? '\u2714' : '\u2718') + '</td>';
+    html += '<td style="text-align:center;">' + escapeHtml(t.phase ?? '?') + '</td>';
+    html += '<td style="text-align:center;">' + (isBlinded ? '\u2714' : '?') + '</td>';
+    html += '<td style="text-align:center;">' + (hasResults ? '\u2714' : '\u2718') + '</td>';
+    html += '<td style="text-align:center;font-weight:700;color:' + sColor + ';">' + score + '%</td></tr>';
+  }
+  html += '</tbody></table>';
+  area.innerHTML = html;
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    FEATURE D1: OUTLIER DETECTION DASHBOARD
