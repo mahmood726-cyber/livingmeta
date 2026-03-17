@@ -970,6 +970,21 @@
     border-color: var(--accent);
     outline: none;
   }
+
+  /* ═══ PRINT STYLES ═══ */
+  @media print {
+    body { background: white !important; color: black !important; font-size: 11pt; }
+    header, .tab-bar, .controls-row, .btn, button, .toggle-switch, .screen-toolbar,
+    .filter-group, #execSummaryBar, .sr-only { display: none !important; }
+    .tab-panel { display: block !important; page-break-inside: avoid; padding: 0 !important; }
+    .tab-panel .section-header { page-break-after: avoid; font-size: 13pt; border-bottom: 1px solid #ccc; }
+    .card { break-inside: avoid; border: 1px solid #ddd !important; box-shadow: none !important; }
+    .plot-container, [id$="Plot"] { break-inside: avoid; max-height: 500px; }
+    .stub-area { border: 1px solid #eee !important; }
+    table { font-size: 9pt; }
+    a { color: black; text-decoration: underline; }
+    @page { margin: 1.5cm; }
+  }
 </style>
 </head>
 
@@ -1051,6 +1066,11 @@
     </button>
   </div>
 </header>
+
+<!-- Executive Summary Dashboard (appears after synthesis) -->
+<div id="execSummaryBar" style="display:none;background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;margin:0 16px 12px 16px;">
+  <div id="execSummaryContent" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:0.82rem;"></div>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
      TAB BAR
@@ -1140,6 +1160,24 @@
       <span id="te-status" style="font-size:0.8rem;opacity:0.6;align-self:center;"></span>
     </div>
   </div>
+
+  <div class="section-header" style="margin-top:24px;">Import Trials from CSV</div>
+  <div class="card" style="padding:12px;">
+    <p style="font-size:0.78rem;opacity:0.7;margin-bottom:8px;">Paste CSV with columns: ID, Year, nTreatment, nControl, Events_Tx, Events_Ctrl, HR, HR_LCI, HR_UCI (header row required)</p>
+    <textarea id="csvImportArea" rows="5" style="width:100%;font-family:monospace;font-size:0.78rem;border:1px solid var(--border-color);border-radius:6px;padding:8px;background:var(--bg-secondary);color:var(--text-primary);resize:vertical;" placeholder="ID,Year,nTreatment,nControl,Events_Tx,Events_Ctrl,HR,HR_LCI,HR_UCI&#10;EXAMPLE-2024,2024,500,500,50,70,0.80,0.65,0.98"></textarea>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="btn btn-primary" onclick="importTrialsCSV()" style="font-size:0.8rem;">Import CSV</button>
+      <span id="csv-import-status" style="font-size:0.8rem;opacity:0.6;align-self:center;"></span>
+    </div>
+  </div>
+
+  <div class="section-header" style="margin-top:24px;">Cross-Config Comparison</div>
+  <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+    <select id="compareConfig1" class="form-select" style="width:200px;"></select>
+    <select id="compareConfig2" class="form-select" style="width:200px;"></select>
+    <button class="btn btn-outline" onclick="runConfigComparison()" style="font-size:0.8rem;">Compare</button>
+  </div>
+  <div id="configComparisonArea" class="stub-area">Select two configs and click Compare to see side-by-side results.</div>
 </div>
 
 <!-- ─────────────────── SEARCH TAB ─────────────────── -->
@@ -1754,6 +1792,13 @@
     <button class="btn btn-outline" onclick="exportRScript()">
       &#129518; R Validation Script
     </button>
+  </div>
+
+  <div class="section-header" style="margin-top:24px;">Audit Trail</div>
+  <div id="auditLogViewer" class="stub-area" style="max-height:400px;overflow-y:auto;">No audit events yet. Actions are logged as you use the app.</div>
+  <div style="margin-top:8px;display:flex;gap:8px;">
+    <button class="btn btn-outline" onclick="renderAuditLog()" style="font-size:0.8rem;">Refresh Audit Log</button>
+    <button class="btn btn-outline" onclick="window.print()" style="font-size:0.8rem;">Print Report</button>
   </div>
 
   <div class="section-header" style="margin-top:24px;">Full Methodological Report (PRISMA 2020)</div>
@@ -4759,6 +4804,8 @@ function handleConfigChange(configId) {
   /* Data quality dashboard on config load */
   const dqOnLoad = computeDataQuality(getConfig());
   renderDataQuality(dqOnLoad);
+  /* Populate cross-config comparison selectors */
+  if (typeof populateCompareSelectors === 'function') populateCompareSelectors();
   /* Purge Plotly plots to prevent memory leaks on config switch */
   ['forestPlotContainer','funnelPlotContainer','galbraithPlot','baujatPlot','labbePlot',
    'goshPlot','doiPlot','tsaPlotContainer','predDistPlot','seqBayesPlot','cdCurvePlot',
@@ -6122,6 +6169,7 @@ const TextExtractor = (() => {
 
     /* P-for-interaction */
     let mi;
+    P_INTERACT_RX.lastIndex = 0;
     while ((mi = P_INTERACT_RX.exec(text)) !== null) {
       const raw = mi[1].trim();
       const pInteract = parseFloat(raw.replace(/[<>=\s]/g, ''));
@@ -8065,6 +8113,10 @@ function runSynthesis() {
   renderSensitivityForest(AppState.results);
   // RoB traffic light
   renderRobTrafficLight(config);
+  // Executive summary dashboard
+  renderExecSummary();
+  // Audit log (auto-refresh)
+  renderAuditLog();
 
   /* Post-process tables for a11y + mobile */
   postProcessTables();
@@ -8921,20 +8973,58 @@ function exportSoFHTML() {
   const track = r.trackB ?? r.trackA;
   const config = getConfig();
   const exp = Math.exp;
+  const clPct = Math.round((AppState.settings?.confLevel ?? 0.95) * 100);
 
-  const certaintySymbols = { HIGH: '\u2b24\u2b24\u2b24\u2b24', MODERATE: '\u2b24\u2b24\u2b24\u25ef', LOW: '\u2b24\u2b24\u25ef\u25ef', 'VERY LOW': '\u2b24\u25ef\u25ef\u25ef' };
+  const certaintySymbols = { HIGH: '\u2295\u2295\u2295\u2295', MODERATE: '\u2295\u2295\u2295\u2296', LOW: '\u2295\u2295\u2296\u2296', 'VERY LOW': '\u2295\u2296\u2296\u2296' };
   const domainLabels = { rob: 'Risk of Bias', inconsistency: 'Inconsistency', indirectness: 'Indirectness', imprecision: 'Imprecision', publicationBias: 'Publication Bias' };
 
   let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>';
   html += 'table{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:10pt}';
   html += 'th,td{border:1px solid #000;padding:6px 8px;text-align:left}';
   html += 'th{background:#4472c4;color:#fff;font-weight:bold}';
-  html += '.high{color:#16a34a;font-weight:bold}.mod{color:#d97706;font-weight:bold}.low{color:#dc2626;font-weight:bold}';
+  html += '.high{color:#16a34a;font-weight:bold}.mod{color:#d97706;font-weight:bold}.low{color:#dc2626;font-weight:bold}.vlow{color:#991b1b;font-weight:bold}';
+  html += 'caption{font-size:12pt;font-weight:bold;margin-bottom:8px;text-align:left}';
   html += '</style></head><body>';
 
-  html += '<h2>Summary of Findings Table</h2>';
-  html += '<p><strong>Outcome:</strong> ' + escapeHtml(r.outcomeKey ?? 'Primary') + ' | <strong>Trials:</strong> ' + (track?.k ?? '?') + '</p>';
+  /* === Part 1: Cochrane-style SoF table === */
+  html += '<table>';
+  html += '<caption>Summary of Findings: ' + escapeHtml(config.name ?? 'Living Meta-Analysis') + '</caption>';
+  html += '<thead><tr><th>Outcome</th><th>No. of participants (studies)</th>';
+  html += '<th>Relative effect (' + clPct + '% CI)</th>';
+  html += '<th>Anticipated absolute effects per 1,000</th>';
+  html += '<th>Certainty (GRADE)</th><th>Comments</th></tr></thead><tbody>';
 
+  if (track) {
+    const est = exp(track.primary.estimate);
+    const ciLo = exp(track.primary.ci[0]);
+    const ciHi = exp(track.primary.ci[1]);
+    /* Compute total N from contributing trials */
+    var contributing = config.trials.filter(function(t) { return getTrialOutcome(t, r.outcomeKey ?? 'mace') != null; });
+    var totalN = contributing.reduce(function(s, t) { var o = getTrialOutcome(t, r.outcomeKey ?? 'mace'); return s + (o?.tN ?? 0) + (o?.cN ?? 0); }, 0);
+    /* CER from median control event rate */
+    var cerArr = contributing.map(function(t) { var o = getTrialOutcome(t, r.outcomeKey ?? 'mace'); return (o && o.cN > 0) ? o.cE / o.cN : null; }).filter(function(v) { return v != null; });
+    cerArr.sort(function(a, b) { return a - b; });
+    var cer = cerArr.length > 0 ? cerArr[Math.floor(cerArr.length / 2)] : 0.1;
+    var cer1000 = Math.round(cer * 1000);
+    /* IER */
+    var ier = (track.measure === 'HR') ? (1 - Math.pow(1 - cer, est)) : (cer * est) / (1 - cer + cer * est);
+    var ier1000 = Math.round(ier * 1000);
+    var ard = ier1000 - cer1000;
+    var certClass = grade.finalCertainty === 'HIGH' ? 'high' : grade.finalCertainty === 'MODERATE' ? 'mod' : grade.finalCertainty === 'VERY LOW' ? 'vlow' : 'low';
+
+    html += '<tr>';
+    html += '<td><b>' + escapeHtml(r.outcomeKey ?? 'Primary endpoint') + '</b></td>';
+    html += '<td style="text-align:center;">' + totalN.toLocaleString() + ' (' + track.k + ' RCTs)</td>';
+    html += '<td style="text-align:center;">' + escapeHtml(track.measure) + ' ' + est.toFixed(2) + ' (' + ciLo.toFixed(2) + ' \u2013 ' + ciHi.toFixed(2) + ')</td>';
+    html += '<td>With comparator: ' + cer1000 + ' per 1,000<br>With intervention: ' + ier1000 + ' per 1,000<br><b>Difference: ' + ard + ' per 1,000</b></td>';
+    html += '<td style="text-align:center;" class="' + certClass + '">' + grade.finalCertainty + '<br>' + (certaintySymbols[grade.finalCertainty] ?? '') + '</td>';
+    html += '<td>' + (track.primary.I2 > 50 ? 'Substantial heterogeneity (I\u00B2=' + track.primary.I2.toFixed(0) + '%). ' : '') + '</td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+
+  /* === Part 2: GRADE domain assessment === */
+  html += '<h3 style="margin-top:18px;">GRADE Evidence Profile</h3>';
   html += '<table><thead><tr><th>Domain</th><th>Assessment</th><th>Downgrade</th><th>Reason</th></tr></thead><tbody>';
   for (const [key, info] of Object.entries(grade.domains)) {
     const dg = info.downgrade ?? 0;
@@ -8945,17 +9035,11 @@ function exportSoFHTML() {
   }
   html += '</tbody></table>';
 
-  if (track) {
-    const est = exp(track.primary.estimate);
-    const ciLo = exp(track.primary.ci[0]);
-    const ciHi = exp(track.primary.ci[1]);
-    const certClass = grade.finalCertainty === 'HIGH' ? 'high' : grade.finalCertainty === 'MODERATE' ? 'mod' : 'low';
-    const clPct = Math.round((AppState.settings?.confLevel ?? 0.95) * 100);
-    html += '<p style="margin-top:12px;"><strong>Pooled estimate:</strong> ' + escapeHtml(track.measure) + ' = ' + est.toFixed(2);
-    html += ' (' + clPct + '% CI: ' + ciLo.toFixed(2) + ' \u2013 ' + ciHi.toFixed(2) + ')';
-    html += ' | I\u00B2 = ' + track.primary.I2.toFixed(1) + '%';
-    html += ' | <span class="' + certClass + '">Certainty: ' + grade.finalCertainty + ' ' + (certaintySymbols[grade.finalCertainty] ?? '') + '</span></p>';
-  }
+  /* === Footnotes === */
+  html += '<p style="font-size:9pt;color:#666;margin-top:12px;">';
+  html += 'GRADE certainty: HIGH = very confident the true effect lies close to the estimate; ';
+  html += 'MODERATE = moderately confident; LOW = limited confidence; VERY LOW = very little confidence. ';
+  html += 'Absolute effects computed from median control event rate across contributing trials.</p>';
 
   html += '</body></html>';
 
@@ -13979,6 +14063,201 @@ function renderMetaRegression(reg) {
   }
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE A1: CSV TRIAL DATA IMPORT
+   ═══════════════════════════════════════════════════════════════════ */
+
+function importTrialsCSV() {
+  const raw = document.getElementById('csvImportArea')?.value?.trim();
+  if (!raw) { showToast('Paste CSV data first.'); return; }
+  const config = getConfig();
+  if (!config) { showToast('No config loaded.'); return; }
+
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) { showToast('Need header row + at least 1 data row.'); return; }
+
+  const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const idCol = header.findIndex(h => h === 'id' || h === 'trial' || h === 'study');
+  const yearCol = header.findIndex(h => h === 'year');
+  const ntCol = header.findIndex(h => h.includes('ntreat') || h === 'nt' || h === 'n_treatment');
+  const ncCol = header.findIndex(h => h.includes('ncontrol') || h === 'nc' || h === 'n_control');
+  const teCol = header.findIndex(h => h.includes('events_tx') || h === 'te' || h === 'events_t');
+  const ceCol = header.findIndex(h => h.includes('events_ctrl') || h === 'ce' || h === 'events_c');
+  const hrCol = header.findIndex(h => h === 'hr' || h === 'hazard_ratio');
+  const hrLoCol = header.findIndex(h => h === 'hr_lci' || h === 'hrlo' || h === 'hr_lower');
+  const hrHiCol = header.findIndex(h => h === 'hr_uci' || h === 'hrhi' || h === 'hr_upper');
+
+  if (idCol < 0) { showToast('CSV must have an ID/Trial/Study column.'); return; }
+
+  const outcomeKey = AppState.results?.outcomeKey ?? 'mace';
+  let added = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.trim());
+    const id = cols[idCol];
+    if (!id || config.trials.some(t => t.id === id)) continue;
+
+    const trial = {
+      id, nctId: null, year: yearCol >= 0 ? parseInt(cols[yearCol]) || null : null,
+      nTreatment: ntCol >= 0 ? parseInt(cols[ntCol]) || 0 : 0,
+      nControl: ncCol >= 0 ? parseInt(cols[ncCol]) || 0 : 0,
+      phase: 'PHASE3', status: 'CSV-imported', reference: 'Imported from CSV',
+      outcomes: {}, rob: { domains: ['low','low','low','low','low'], overall: 'low' },
+      _userAdded: true
+    };
+    trial.nTotal = trial.nTreatment + trial.nControl;
+    const oc = {};
+    if (teCol >= 0) oc.tE = parseInt(cols[teCol]) || null;
+    if (ceCol >= 0) oc.cE = parseInt(cols[ceCol]) || null;
+    if (ntCol >= 0) oc.tN = trial.nTreatment;
+    if (ncCol >= 0) oc.cN = trial.nControl;
+    if (hrCol >= 0) { oc.hr = parseFloat(cols[hrCol]) || null; oc.hrLo = hrLoCol >= 0 ? parseFloat(cols[hrLoCol]) || null : null; oc.hrHi = hrHiCol >= 0 ? parseFloat(cols[hrHiCol]) || null : null; }
+    trial.outcomes[outcomeKey] = oc;
+    config.trials.push(trial);
+    if (!AppState._userTrials) AppState._userTrials = [];
+    AppState._userTrials.push(id);
+    added++;
+  }
+
+  saveState();
+  document.getElementById('csv-import-status').textContent = '\u2714 Imported ' + added + ' trials';
+  showToast(added + ' trials imported from CSV. Run synthesis to include them.');
+  logAudit('import_csv', { added, totalLines: lines.length - 1 });
+  renderProtocolTab();
+  renderDataQuality(computeDataQuality(config));
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE A2: VISUAL AUDIT LOG
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderAuditLog() {
+  const area = document.getElementById('auditLogViewer');
+  if (!area) return;
+  const log = AppState.auditLog ?? [];
+  if (log.length === 0) { area.innerHTML = '<span style="opacity:0.6;">No audit events recorded yet.</span>'; return; }
+
+  const iconMap = {
+    run_synthesis: '\u2699', export_bundle: '\u{1F4E6}', export_csv: '\u{1F4C4}',
+    export_pdf: '\u{1F4C4}', export_revman: '\u{1F4C4}', export_prisma2020: '\u{1F4CA}',
+    export_r_script: '\u{1F9EA}', add_user_trial: '\u2795', remove_user_trial: '\u2796',
+    import_csv: '\u{1F4C1}', what_if: '\u{1F52E}', multi_outcome_heatmap: '\u{1F5FA}',
+    export_grade_csv: '\u{1F4CA}', export_methods_report: '\u{1F4DD}', export_forest_plot: '\u{1F333}'
+  };
+
+  let html = '<table style="width:100%;font-size:0.75rem;border-collapse:collapse;">';
+  html += '<thead><tr><th style="padding:4px;text-align:left;">Time</th><th style="text-align:left;">Action</th><th style="text-align:left;">Details</th></tr></thead><tbody>';
+  const recent = log.slice(-50).reverse();
+  for (const entry of recent) {
+    const icon = iconMap[entry.action] ?? '\u25CF';
+    const time = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : '\u2014';
+    const details = entry.detail ? Object.entries(entry.detail).map(([k, v]) => escapeHtml(k) + '=' + escapeHtml(String(v))).join(', ') : '';
+    html += '<tr><td style="padding:4px;font-family:monospace;white-space:nowrap;">' + escapeHtml(time) + '</td>';
+    html += '<td style="padding:4px;">' + icon + ' ' + escapeHtml(entry.action ?? 'unknown') + '</td>';
+    html += '<td style="padding:4px;opacity:0.7;">' + details + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  html += '<div style="font-size:0.7rem;opacity:0.5;margin-top:4px;">Showing last ' + Math.min(50, log.length) + ' of ' + log.length + ' events</div>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE A3: EXECUTIVE SUMMARY DASHBOARD
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderExecSummary() {
+  const bar = document.getElementById('execSummaryBar');
+  const content = document.getElementById('execSummaryContent');
+  if (!bar || !content) return;
+  const r = AppState.results;
+  if (!r || (!r.trackA && !r.trackB)) { bar.style.display = 'none'; return; }
+
+  bar.style.display = 'block';
+  const track = r.trackB ?? r.trackA;
+  const config = getConfig();
+  const measure = track.measure ?? 'OR';
+  const or = Math.exp(track.primary.estimate);
+  const ciLo = Math.exp(track.primary.ci[0]);
+  const ciHi = Math.exp(track.primary.ci[1]);
+  const sig = ciHi < 1 || ciLo > 1;
+  const sigColor = sig ? (or < 1 ? '#16a34a' : '#dc2626') : '#64748b';
+  const I2 = track.primary.I2;
+  const grade = r.grade?.overall ?? 'N/A';
+  const gradeColors = { HIGH: '#16a34a', MODERATE: '#d97706', LOW: '#ea580c', 'VERY LOW': '#dc2626' };
+  const dr = r.decisionRegret;
+
+  let html = '<span style="font-weight:700;color:var(--accent);">' + escapeHtml(config.name ?? config.id) + '</span>';
+  html += '<span style="border-left:1px solid var(--border-color);height:16px;"></span>';
+  html += '<span style="font-weight:700;color:' + sigColor + ';">' + measure + ' ' + or.toFixed(2) + '</span>';
+  html += '<span style="opacity:0.6;">(' + ciLo.toFixed(2) + '\u2013' + ciHi.toFixed(2) + ')</span>';
+  html += '<span>k=' + track.k + '</span>';
+  html += '<span>I\u00B2=' + I2.toFixed(0) + '%</span>';
+  html += '<span style="color:' + (gradeColors[grade] ?? '#64748b') + ';font-weight:600;">GRADE: ' + escapeHtml(grade) + '</span>';
+  if (dr) html += '<span style="color:' + ({ 'STRONG BENEFIT': '#16a34a', 'PROBABLE BENEFIT': '#2563eb', 'POSSIBLE BENEFIT': '#d97706', 'UNCERTAIN': '#64748b', 'POSSIBLE HARM': '#dc2626' }[dr.verdict] ?? '#64748b') + ';font-weight:600;">' + dr.verdict + '</span>';
+  html += '<span style="color:' + sigColor + ';">' + (sig ? '\u2714 Significant' : '\u2718 Not sig') + '</span>';
+  content.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE A4: CROSS-CONFIG COMPARISON TABLE
+   ═══════════════════════════════════════════════════════════════════ */
+
+function populateCompareSelectors() {
+  const sel1 = document.getElementById('compareConfig1');
+  const sel2 = document.getElementById('compareConfig2');
+  if (!sel1 || !sel2) return;
+  const keys = Object.keys(CONFIG_LIBRARY ?? {});
+  for (const sel of [sel1, sel2]) {
+    sel.innerHTML = '<option value="">Select config...</option>';
+    for (const k of keys) {
+      const opt = document.createElement('option');
+      opt.value = k; opt.textContent = (CONFIG_LIBRARY[k].name ?? k).substring(0, 50);
+      sel.appendChild(opt);
+    }
+  }
+}
+
+function runConfigComparison() {
+  const area = document.getElementById('configComparisonArea');
+  if (!area) return;
+  const id1 = document.getElementById('compareConfig1')?.value;
+  const id2 = document.getElementById('compareConfig2')?.value;
+  if (!id1 || !id2) { showToast('Select two configs to compare.'); return; }
+
+  const configs = [id1, id2].map(id => CONFIG_LIBRARY[id]);
+  const results = configs.map(cfg => {
+    if (!cfg) return null;
+    const trackB = synthesizeTrackB(cfg.trials, 'mace');
+    const trackA = synthesizeTrackA(cfg.trials, 'mace');
+    const track = trackB ?? trackA;
+    if (!track) return { name: cfg.name, k: cfg.trials.length, noData: true };
+    return {
+      name: cfg.name, k: track.k, measure: track.measure,
+      effect: Math.exp(track.primary.estimate), ciLo: Math.exp(track.primary.ci[0]), ciHi: Math.exp(track.primary.ci[1]),
+      I2: track.primary.I2, tau2: track.primary.tau2 ?? 0
+    };
+  });
+
+  let html = '<table style="width:100%;font-size:0.82rem;border-collapse:collapse;">';
+  html += '<thead><tr><th style="padding:6px;text-align:left;">Metric</th>';
+  for (const r of results) html += '<th style="padding:6px;text-align:center;">' + escapeHtml((r?.name ?? 'N/A').substring(0, 40)) + '</th>';
+  html += '</tr></thead><tbody>';
+  const metrics = ['k', 'effect', 'ciLo', 'ciHi', 'I2', 'tau2'];
+  const labels = ['Studies (k)', 'Pooled Effect', 'CI Lower', 'CI Upper', 'I\u00B2 (%)', '\u03C4\u00B2'];
+  for (let m = 0; m < metrics.length; m++) {
+    html += '<tr><td style="padding:6px;font-weight:600;">' + labels[m] + '</td>';
+    for (const r of results) {
+      if (!r || r.noData) { html += '<td style="text-align:center;opacity:0.5;">No data</td>'; continue; }
+      const val = r[metrics[m]];
+      const fmt = typeof val === 'number' ? (metrics[m] === 'k' ? val : val.toFixed(3)) : '\u2014';
+      html += '<td style="text-align:center;font-weight:' + (metrics[m] === 'effect' ? '700' : '400') + ';">' + fmt + '</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  area.innerHTML = html;
+  logAudit('config_comparison', { config1: id1, config2: id2 });
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    FEATURE Z1: INTERACTIVE TRIAL EDITOR

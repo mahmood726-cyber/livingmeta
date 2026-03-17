@@ -294,6 +294,36 @@ def run_tests():
         ok('downloadForestPlot accepts svg', d.execute_script(
             'return typeof downloadForestPlot === "function"'))
 
+        # ─── 100-110: Round 5 features (CSV import, audit log, exec summary, print, cross-config) ───
+        ok('importTrialsCSV fn exists', d.execute_script(
+            'return typeof importTrialsCSV === "function"'))
+        ok('csvImportArea textarea exists', d.execute_script(
+            'return document.getElementById("csvImportArea") !== null'))
+        ok('renderAuditLog fn exists', d.execute_script(
+            'return typeof renderAuditLog === "function"'))
+        ok('audit log renders after synthesis', d.execute_script('''
+            var area = document.getElementById("auditLogViewer");
+            return area !== null && area.innerHTML.includes("run_synthesis");
+        '''))
+        ok('renderExecSummary fn exists', d.execute_script(
+            'return typeof renderExecSummary === "function"'))
+        ok('exec summary bar visible after synthesis', d.execute_script(
+            'return document.getElementById("execSummaryBar")?.style?.display !== "none"'))
+        ok('exec summary shows pooled effect', d.execute_script('''
+            var content = document.getElementById("execSummaryContent");
+            return content !== null && content.innerHTML.includes("k=");
+        '''))
+        ok('populateCompareSelectors fn exists', d.execute_script(
+            'return typeof populateCompareSelectors === "function"'))
+        ok('runConfigComparison fn exists', d.execute_script(
+            'return typeof runConfigComparison === "function"'))
+        ok('compare selectors populated', d.execute_script('''
+            var sel = document.getElementById("compareConfig1");
+            return sel !== null && sel.options.length > 5;
+        '''))
+        ok('print CSS exists', d.execute_script(
+            'return Array.from(document.querySelectorAll("style")).some(function(s){return s.textContent.includes("@media print")})'))
+
         # ─── Final: JS errors ───
         logs = d.get_log('browser')
         errors = [l for l in logs if l['level'] == 'SEVERE']
