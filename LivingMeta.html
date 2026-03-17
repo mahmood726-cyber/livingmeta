@@ -1319,6 +1319,19 @@
     <!-- Rendered by JS -->
   </div>
 
+  <div class="section-header" style="margin-top:24px;">Effect Size Converter</div>
+  <div class="card" style="padding:12px;">
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px;">
+      <div><label style="font-size:0.72rem;font-weight:600;">Input Type</label>
+        <select id="esc-type" class="form-select" style="width:100px;" onchange="convertEffectSize()">
+          <option value="or">OR</option><option value="rr">RR</option><option value="hr">HR</option><option value="nnt">NNT</option>
+        </select></div>
+      <div><label style="font-size:0.72rem;font-weight:600;">Value</label><input type="number" id="esc-value" class="form-select" step="0.01" value="0.75" style="width:90px;" oninput="convertEffectSize()"></div>
+      <div><label style="font-size:0.72rem;font-weight:600;">Baseline Risk (%)</label><input type="number" id="esc-cer" class="form-select" value="10" min="0.1" max="99" style="width:80px;" oninput="convertEffectSize()"></div>
+    </div>
+    <div id="escResults" style="font-size:0.82rem;"></div>
+  </div>
+
   <div class="section-header" style="margin-top:24px;">Outcome Harmonization Check</div>
   <div id="harmonizationArea" class="stub-area">
     Run synthesis to check for composite endpoint mismatches across trials.
@@ -1736,6 +1749,13 @@
     </div>
   </div>
 
+  <div class="section-header" style="margin-top:24px;">Summary Statistics (All Methods)</div>
+  <div style="margin-bottom:8px;">
+    <button class="btn btn-outline" onclick="renderSummaryStats()" style="font-size:0.8rem;">Generate Summary Table</button>
+    <button class="btn btn-outline" onclick="exportSummaryStatsCSV()" style="font-size:0.8rem;">Export CSV</button>
+  </div>
+  <div id="summaryStatsArea" class="stub-area">Run synthesis first, then click Generate to see all computed statistics in one table.</div>
+
   <div class="section-header" style="margin-top:24px;">Multi-Outcome Heatmap</div>
   <div style="margin-bottom:8px;">
     <button class="btn btn-primary" onclick="renderMultiOutcomeHeatmap()" style="font-size:0.8rem;">Generate Heatmap (All Outcomes)</button>
@@ -1808,6 +1828,19 @@
   <div style="margin-top:8px;display:flex;gap:8px;">
     <button class="btn btn-outline" onclick="renderAuditLog()" style="font-size:0.8rem;">Refresh Audit Log</button>
     <button class="btn btn-outline" onclick="window.print()" style="font-size:0.8rem;">Print Report</button>
+  </div>
+
+  <div class="section-header" style="margin-top:24px;">Share Analysis (URL)</div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <button class="btn btn-outline" onclick="copyShareURL()" style="font-size:0.8rem;">Copy Shareable Link</button>
+    <span id="shareURLStatus" style="font-size:0.78rem;opacity:0.6;"></span>
+  </div>
+
+  <div class="section-header" style="margin-top:24px;">Auto-Save Snapshots</div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+    <select id="snapshotSelector" class="form-select" style="width:280px;"></select>
+    <button class="btn btn-outline" onclick="restoreSnapshot()" style="font-size:0.8rem;">Restore</button>
+    <span id="snapshotStatus" style="font-size:0.78rem;opacity:0.6;"></span>
   </div>
 
   <div class="section-header" style="margin-top:24px;">Full Methodological Report (PRISMA 2020)</div>
@@ -4758,6 +4791,8 @@ document.addEventListener('DOMContentLoaded', function() {
       switchTab(tabs[next].dataset.tab);
     }
   });
+  /* Apply URL params if present */
+  if (typeof applyURLParams === 'function') setTimeout(applyURLParams, 200);
 });
 
 
@@ -4815,6 +4850,7 @@ function handleConfigChange(configId) {
   renderDataQuality(dqOnLoad);
   /* Populate cross-config comparison selectors */
   if (typeof populateCompareSelectors === 'function') populateCompareSelectors();
+  if (typeof populateSnapshotSelector === 'function') populateSnapshotSelector();
   /* Purge Plotly plots to prevent memory leaks on config switch */
   ['forestPlotContainer','funnelPlotContainer','galbraithPlot','baujatPlot','labbePlot',
    'goshPlot','doiPlot','tsaPlotContainer','predDistPlot','seqBayesPlot','cdCurvePlot',
@@ -8132,6 +8168,8 @@ function runSynthesis() {
   renderExecSummary();
   // Audit log (auto-refresh)
   renderAuditLog();
+  // Auto-save snapshot
+  if (typeof autoSaveSnapshot === 'function') autoSaveSnapshot();
 
   /* Post-process tables for a11y + mobile */
   postProcessTables();
@@ -14083,6 +14121,226 @@ function renderMetaRegression(reg) {
   }
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE B1: EFFECT SIZE CONVERTER
+   ═══════════════════════════════════════════════════════════════════ */
+
+function convertEffectSize() {
+  const area = document.getElementById('escResults');
+  if (!area) return;
+  const type = document.getElementById('esc-type')?.value ?? 'or';
+  const val = parseFloat(document.getElementById('esc-value')?.value);
+  const cer = parseFloat(document.getElementById('esc-cer')?.value) / 100;
+  if (!isFinite(val) || val <= 0 || !isFinite(cer) || cer <= 0 || cer >= 1) {
+    area.innerHTML = '<span style="opacity:0.6;">Enter valid positive value and baseline risk (0.1-99%)</span>';
+    return;
+  }
+
+  let or, rr, hr, logOR;
+  if (type === 'or') { or = val; logOR = Math.log(or); rr = or / (1 - cer + cer * or); hr = null; }
+  else if (type === 'rr') { rr = val; or = rr * (1 - cer) / (1 - rr * cer); logOR = Math.log(or); hr = null; }
+  else if (type === 'hr') { hr = val; /* HR ≈ log(1-eer)/log(1-cer) → approximate OR via rare disease */ or = hr; rr = hr; logOR = Math.log(or); }
+  else if (type === 'nnt') { const ard = 1 / val; const eer = cer - ard; rr = eer > 0 ? eer / cer : 0.01; or = rr * (1 - cer) / (1 - rr * cer); logOR = Math.log(or); hr = null; }
+
+  const eer = type === 'nnt' ? (cer - 1 / val) : (or * cer / (1 - cer + or * cer));
+  const ard = cer - eer;
+  const nnt = ard > 0 ? Math.ceil(1 / ard) : null;
+
+  let html = '<table style="font-size:0.82rem;border-collapse:collapse;width:100%;">';
+  html += '<tr><td style="padding:4px;font-weight:600;">OR</td><td>' + (or ?? 'N/A').toFixed?.(3) + '</td>';
+  html += '<td style="padding:4px;font-weight:600;">RR</td><td>' + (rr ?? 'N/A').toFixed?.(3) + '</td></tr>';
+  html += '<tr><td style="padding:4px;font-weight:600;">log(OR)</td><td>' + (logOR ?? 'N/A').toFixed?.(4) + '</td>';
+  html += '<td style="padding:4px;font-weight:600;">ARD</td><td>' + (ard * 100).toFixed(2) + '%</td></tr>';
+  html += '<tr><td style="padding:4px;font-weight:600;">NNT</td><td>' + (nnt ?? 'N/A') + '</td>';
+  html += '<td style="padding:4px;font-weight:600;">EER</td><td>' + (eer * 100).toFixed(2) + '%</td></tr>';
+  html += '<tr><td style="padding:4px;font-weight:600;">CER</td><td>' + (cer * 100).toFixed(1) + '%</td>';
+  html += '<td style="padding:4px;font-weight:600;">Events/1000</td><td>' + Math.round(ard * 1000) + ' fewer</td></tr>';
+  html += '</table>';
+  area.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE B2: URL STATE SHARING
+   ═══════════════════════════════════════════════════════════════════ */
+
+function copyShareURL() {
+  const config = getConfig();
+  if (!config) { showToast('No config loaded.'); return; }
+  const params = new URLSearchParams();
+  params.set('config', AppState.configId ?? config.id ?? '');
+  params.set('outcome', AppState.results?.outcomeKey ?? 'mace');
+  params.set('tau2', AppState.settings?.tau2Method ?? 'DL');
+  if (AppState.settings?.useHKSJ) params.set('hksj', '1');
+  if (AppState.settings?.confLevel && AppState.settings.confLevel !== 0.95) params.set('cl', AppState.settings.confLevel);
+  const url = location.origin + location.pathname + '?' + params.toString();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(function() {
+      document.getElementById('shareURLStatus').textContent = '\u2714 Link copied!';
+      showToast('Shareable URL copied to clipboard.');
+    }).catch(function() { showToast('Copy failed.'); });
+  }
+  logAudit('copy_share_url', { configId: config.id });
+}
+
+/* Parse URL params on load */
+function applyURLParams() {
+  const params = new URLSearchParams(location.search);
+  const cfgId = params.get('config');
+  if (cfgId && CONFIG_LIBRARY[cfgId]) {
+    const sel = document.getElementById('configSelector');
+    if (sel) { sel.value = cfgId; handleConfigChange(cfgId); }
+    const outcome = params.get('outcome');
+    if (outcome) {
+      const oSel = document.getElementById('synthOutcome');
+      if (oSel) setTimeout(function() { oSel.value = outcome; }, 500);
+    }
+    const tau2 = params.get('tau2');
+    if (tau2) {
+      const tSel = document.getElementById('synthTau2Method');
+      if (tSel) setTimeout(function() { tSel.value = tau2; }, 500);
+    }
+    if (params.get('hksj') === '1') {
+      const hChk = document.getElementById('synthHKSJ');
+      if (hChk) setTimeout(function() { hChk.checked = true; }, 500);
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE B3: AUTO-SAVE WITH VERSION SNAPSHOTS
+   ═══════════════════════════════════════════════════════════════════ */
+
+function autoSaveSnapshot() {
+  if (!AppState.configId) return;
+  const key = 'livingmeta_snapshots_' + AppState.configId;
+  let snapshots = [];
+  try { snapshots = JSON.parse(localStorage.getItem(key) ?? '[]'); } catch(e) {}
+  const snap = { timestamp: new Date().toISOString(), configId: AppState.configId, outcomeKey: AppState.results?.outcomeKey ?? 'mace', settings: AppState.settings };
+  snapshots.push(snap);
+  if (snapshots.length > 5) snapshots = snapshots.slice(-5);
+  try { localStorage.setItem(key, JSON.stringify(snapshots)); } catch(e) {}
+  populateSnapshotSelector();
+}
+
+function populateSnapshotSelector() {
+  const sel = document.getElementById('snapshotSelector');
+  if (!sel || !AppState.configId) return;
+  const key = 'livingmeta_snapshots_' + AppState.configId;
+  let snapshots = [];
+  try { snapshots = JSON.parse(localStorage.getItem(key) ?? '[]'); } catch(e) {}
+  sel.innerHTML = '<option value="">Select snapshot...</option>';
+  for (let i = snapshots.length - 1; i >= 0; i--) {
+    const s = snapshots[i];
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = new Date(s.timestamp).toLocaleString() + ' (' + (s.outcomeKey ?? 'mace') + ')';
+    sel.appendChild(opt);
+  }
+}
+
+function restoreSnapshot() {
+  const sel = document.getElementById('snapshotSelector');
+  if (!sel || !sel.value) { showToast('Select a snapshot first.'); return; }
+  const key = 'livingmeta_snapshots_' + AppState.configId;
+  let snapshots = [];
+  try { snapshots = JSON.parse(localStorage.getItem(key) ?? '[]'); } catch(e) {}
+  const snap = snapshots[parseInt(sel.value)];
+  if (!snap) { showToast('Snapshot not found.'); return; }
+  if (snap.settings) AppState.settings = snap.settings;
+  saveState();
+  document.getElementById('snapshotStatus').textContent = '\u2714 Restored from ' + new Date(snap.timestamp).toLocaleTimeString();
+  showToast('Snapshot restored. Run synthesis to apply.');
+  logAudit('restore_snapshot', { timestamp: snap.timestamp });
+}
+
+/* Auto-save every 60 seconds */
+setInterval(autoSaveSnapshot, 60000);
+
+/* ═══════════════════════════════════════════════════════════════════
+   FEATURE B4: SUMMARY STATISTICS TABLE
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderSummaryStats() {
+  const area = document.getElementById('summaryStatsArea');
+  if (!area) return;
+  const r = AppState.results;
+  if (!r) { area.innerHTML = '<span style="opacity:0.6;">Run synthesis first</span>'; return; }
+  const track = r.trackB ?? r.trackA;
+  if (!track) { area.innerHTML = '<span style="opacity:0.6;">No synthesis results</span>'; return; }
+
+  AppState._summaryStatsData = [];
+  const addRow = function(cat, metric, value, note) {
+    AppState._summaryStatsData.push({ category: cat, metric: metric, value: value, note: note ?? '' });
+  };
+
+  /* Pooled estimates */
+  addRow('Pooled', track.measure + ' (RE)', Math.exp(track.primary.estimate).toFixed(4));
+  addRow('Pooled', 'CI Lower', Math.exp(track.primary.ci[0]).toFixed(4));
+  addRow('Pooled', 'CI Upper', Math.exp(track.primary.ci[1]).toFixed(4));
+  addRow('Pooled', 'p-value', track.primary.pval != null ? track.primary.pval.toFixed(6) : 'N/A');
+  addRow('Pooled', 'k', track.k);
+  if (track.fixed) addRow('Pooled', track.measure + ' (FE)', Math.exp(track.fixed.estimate).toFixed(4));
+
+  /* Heterogeneity */
+  addRow('Heterogeneity', 'I\u00B2 (%)', track.primary.I2.toFixed(2));
+  addRow('Heterogeneity', 'Cochran Q', (track.primary.Q ?? 0).toFixed(2));
+  addRow('Heterogeneity', 'Q p-value', track.primary.Qp != null ? track.primary.Qp.toFixed(6) : 'N/A');
+  for (const [name, t2] of Object.entries(track.tau2All ?? {})) {
+    addRow('Heterogeneity', '\u03C4\u00B2 (' + name + ')', t2.tau2.toFixed(6));
+  }
+  if (track.primary.pi && !isNaN(track.primary.pi[0])) {
+    addRow('Heterogeneity', 'PI Lower', Math.exp(track.primary.pi[0]).toFixed(4));
+    addRow('Heterogeneity', 'PI Upper', Math.exp(track.primary.pi[1]).toFixed(4));
+  }
+
+  /* Bias tests */
+  if (r.harbord) addRow('Bias', 'Harbord p', r.harbord.pVal?.toFixed(4) ?? 'N/A');
+  if (track.bias?.egger) addRow('Bias', 'Egger p', track.bias.egger.pval?.toFixed(4) ?? 'N/A');
+  if (track.bias?.begg) addRow('Bias', 'Begg p', track.bias.begg.pval?.toFixed(4) ?? 'N/A');
+  if (track.bias?.trimFill) addRow('Bias', 'Trim-fill k0', track.bias.trimFill.k0 ?? 0);
+  if (r.copas) addRow('Bias', 'Copas adjusted', r.copas.adjustedEst != null ? Math.exp(r.copas.adjustedEst).toFixed(4) : 'N/A');
+
+  /* Sensitivity */
+  if (r.fragility) addRow('Sensitivity', 'Fragility Index', r.fragility.pooledFI ?? 'N/A');
+  if (r.nnt) addRow('Sensitivity', 'NNT', r.nnt.nnt ?? 'N/A');
+  if (r.evalue) { addRow('Sensitivity', 'E-value (point)', r.evalue.ePoint?.toFixed(2) ?? 'N/A'); addRow('Sensitivity', 'E-value (CI)', r.evalue.eCI?.toFixed(2) ?? 'N/A'); }
+  if (r.failsafeN) { addRow('Sensitivity', 'Fail-safe N (Rosenthal)', r.failsafeN.rosenthal ?? 'N/A'); addRow('Sensitivity', 'Fail-safe N (Orwin)', r.failsafeN.orwin ?? 'N/A'); }
+  if (r.robma) addRow('Sensitivity', 'RoBMA BF10', r.robma.bf10?.toFixed(2) ?? 'N/A');
+  if (r.zCurve) addRow('Sensitivity', 'Z-curve ERR', r.zCurve.err?.toFixed(3) ?? 'N/A');
+  if (r.decisionRegret) { addRow('Decision', 'P(Benefit)', (r.decisionRegret.pBenefit * 100).toFixed(1) + '%'); addRow('Decision', 'Verdict', r.decisionRegret.verdict); }
+  if (r.grade) addRow('GRADE', 'Certainty', r.grade.overall ?? 'N/A');
+
+  /* Render table */
+  let html = '<table style="width:100%;font-size:0.78rem;border-collapse:collapse;">';
+  html += '<thead><tr><th style="text-align:left;padding:4px;">Category</th><th style="text-align:left;padding:4px;">Metric</th><th style="text-align:right;padding:4px;">Value</th></tr></thead><tbody>';
+  let lastCat = '';
+  for (const row of AppState._summaryStatsData) {
+    const catDisplay = row.category !== lastCat ? '<strong>' + escapeHtml(row.category) + '</strong>' : '';
+    lastCat = row.category;
+    html += '<tr><td style="padding:4px;">' + catDisplay + '</td><td style="padding:4px;">' + escapeHtml(row.metric) + '</td><td style="text-align:right;padding:4px;font-family:monospace;">' + escapeHtml(String(row.value)) + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  html += '<div style="font-size:0.72rem;opacity:0.6;margin-top:4px;">' + AppState._summaryStatsData.length + ' statistics computed</div>';
+  area.innerHTML = html;
+  showToast('Summary: ' + AppState._summaryStatsData.length + ' statistics.');
+}
+
+function exportSummaryStatsCSV() {
+  const data = AppState._summaryStatsData;
+  if (!data || data.length === 0) { showToast('Generate summary table first.'); return; }
+  const safeCSV = function(v) { const s = String(v); return /^[=+@\t\r]/.test(s) ? "'" + s : s; };
+  let csv = 'Category,Metric,Value\n';
+  for (const row of data) csv += [safeCSV(row.category), safeCSV(row.metric), safeCSV(row.value)].join(',') + '\n';
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'LivingMeta_SummaryStats_' + (getConfig()?.id ?? 'export') + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Summary statistics CSV exported.');
+  logAudit('export_summary_stats', { k: data.length });
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    FEATURE A5: HETEROGENEITY DECOMPOSITION PIE CHART

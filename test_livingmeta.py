@@ -358,6 +358,36 @@ def run_tests():
             return gp !== null && (gp.querySelector(".js-plotly-plot") !== null || gp.querySelector(".plot-container") !== null || gp.innerHTML.length > 100);
         '''))
 
+        # ─── 121-130: Round 7 features (effect converter, URL share, auto-save, summary stats) ───
+        ok('convertEffectSize fn exists', d.execute_script(
+            'return typeof convertEffectSize === "function"'))
+        ok('effect converter renders', d.execute_script('''
+            document.getElementById("esc-value").value = "0.75";
+            document.getElementById("esc-cer").value = "10";
+            convertEffectSize();
+            var r = document.getElementById("escResults");
+            return r !== null && r.innerHTML.includes("NNT");
+        '''))
+        ok('copyShareURL fn exists', d.execute_script(
+            'return typeof copyShareURL === "function"'))
+        ok('applyURLParams fn exists', d.execute_script(
+            'return typeof applyURLParams === "function"'))
+        ok('autoSaveSnapshot fn exists', d.execute_script(
+            'return typeof autoSaveSnapshot === "function"'))
+        ok('populateSnapshotSelector fn exists', d.execute_script(
+            'return typeof populateSnapshotSelector === "function"'))
+        ok('renderSummaryStats fn exists', d.execute_script(
+            'return typeof renderSummaryStats === "function"'))
+        ok('summary stats generates table', d.execute_script('''
+            renderSummaryStats();
+            var area = document.getElementById("summaryStatsArea");
+            return area !== null && area.innerHTML.includes("Pooled");
+        '''))
+        ok('exportSummaryStatsCSV fn exists', d.execute_script(
+            'return typeof exportSummaryStatsCSV === "function"'))
+        ok('snapshot selector container exists', d.execute_script(
+            'return document.getElementById("snapshotSelector") !== null'))
+
         # ─── Final: JS errors ───
         logs = d.get_log('browser')
         errors = [l for l in logs if l['level'] == 'SEVERE']
